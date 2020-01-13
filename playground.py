@@ -9,10 +9,12 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from cdt.data import load_dataset
 from sklearn.model_selection import train_test_split
+from CausalDiscuveryToolboxClone.DataGeneration import functions
 
 from scipy.special import expit
 
 data, labels = load_dataset('tuebingen')
+data, labels = functions.swap_cause_effect(data, labels)
 d0 = data.values[0]
 
 X_tr, X_te, y_tr, y_te = train_test_split(data, labels, train_size=.5)
