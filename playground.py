@@ -1,13 +1,10 @@
-from cdt.data import CausalPairGenerator
-import numpy as np
-
 # generator = CausalPairGenerator('linear')
 # data, labels = generator.generate(100, npoints=500)
 # # generator.to_csv('generated_pairs')
 # d = data.values
 
 # from cdt.causality.pairwise import NCC
-from CausalDiscuveryToolboxClone.NCC import NCC
+from CausalDiscuveryToolboxClone.Models.NCC import NCC
 import networkx as nx
 import matplotlib.pyplot as plt
 from cdt.data import load_dataset

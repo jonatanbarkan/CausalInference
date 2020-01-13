@@ -32,10 +32,9 @@ import numpy as np
 import torch as th
 import pandas as pd
 # from cdt.causality.pairwise.model import PairwiseModel
-from CausalDiscuveryToolboxClone.PairwiseModel import PairwiseModel
+from CausalDiscuveryToolboxClone.Models.PairwiseModel import PairwiseModel
 from tqdm import trange
 from torch.utils import data
-from random import shuffle
 from cdt.utils.Settings import SETTINGS
 
 
@@ -107,7 +106,7 @@ class NCC_model(th.nn.Module):
         kernel_size (int): Kernel size of the convolutions
     """
 
-    def __init__(self, n_hiddens=20, kernel_size=3):
+    def __init__(self, n_hiddens=100, kernel_size=3):
         """Init the NCC structure with the number of hidden units.
         """
         super(NCC_model, self).__init__()
@@ -116,7 +115,7 @@ class NCC_model(th.nn.Module):
                                      th.nn.Conv1d(n_hiddens, n_hiddens,
                                                   kernel_size),
                                      th.nn.ReLU())
-        # self.batch_norm = th.nn.BatchNorm1d(n_hiddens, affine=False)
+        self.batch_norm = th.nn.BatchNorm1d(n_hiddens, affine=False)
         self.dense = th.nn.Sequential(th.nn.Linear(n_hiddens, n_hiddens),
                                       th.nn.ReLU(),
                                       th.nn.Linear(n_hiddens, 1)
