@@ -6,7 +6,8 @@ import numpy as np
 # # generator.to_csv('generated_pairs')
 # d = data.values
 
-from cdt.causality.pairwise import NCC
+# from cdt.causality.pairwise import NCC
+from CausalDiscuveryToolboxClone.NCC import NCC
 import networkx as nx
 import matplotlib.pyplot as plt
 from cdt.data import load_dataset
