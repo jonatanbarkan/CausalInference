@@ -28,7 +28,7 @@ import requests
 import zipfile
 import io
 from numpy import random
-from ..utils.io import read_causal_pairs, read_list_edges
+from cdt.utils.io import read_causal_pairs, read_list_edges
 
 
 def load_dataset(name, **kwargs):
