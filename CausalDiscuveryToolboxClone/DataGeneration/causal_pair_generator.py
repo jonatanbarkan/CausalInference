@@ -27,17 +27,17 @@ Author: Diviyan Kalainathan
 from sklearn.preprocessing import scale
 import numpy as np
 import pandas as pd
-from .causal_mechanisms import (LinearMechanism,
-                                Polynomial_Mechanism,
-                                SigmoidAM_Mechanism,
-                                SigmoidMix_Mechanism,
-                                GaussianProcessAdd_Mechanism,
-                                GaussianProcessMix_Mechanism,
-                                NN_Mechanism,
-                                gmm_cause,
-                                normal_noise)
+from cdt.data.causal_mechanisms import (LinearMechanism,
+                                        Polynomial_Mechanism,
+                                        SigmoidAM_Mechanism,
+                                        SigmoidMix_Mechanism,
+                                        GaussianProcessAdd_Mechanism,
+                                        GaussianProcessMix_Mechanism,
+                                        NN_Mechanism,
+                                        gmm_cause,
+                                        normal_noise)
 from joblib import delayed, Parallel
-from ..utils.Settings import SETTINGS
+from cdt.utils.Settings import SETTINGS
 
 
 class CausalPairGenerator(object):
@@ -54,10 +54,10 @@ class CausalPairGenerator(object):
             of the graph, defaults to a Gaussian Mixture model.
 
     Example:
-        >>> from cdt.data import CausalPairGenerator
-        >>> generator = ('linear')
-        >>> data, labels = generator.generate(100, npoints=500)
-        >>> generator.to_csv('generated_pairs')
+        # >>> from cdt.data import CausalPairGenerator
+        # >>> generator = ('linear')
+        # >>> data, labels = generator.generate(100, npoints=500)
+        # >>> generator.to_csv('generated_pairs')
     """
 
     def __init__(self, causal_mechanism, noise=normal_noise,
@@ -90,6 +90,7 @@ class CausalPairGenerator(object):
             labels. The data is at the ``SampleID, a (numpy.ndarray) , b (numpy.ndarray))``
             format.
         """
+
         def generate_pair(npoints, label, rescale):
             root = self.initial_generator(npoints)[:, np.newaxis]
             cause = self.mechanism(1, npoints, self.noise,
@@ -116,9 +117,9 @@ class CausalPairGenerator(object):
         Optional keyword arguments can be passed to pandas.
         """
         if self.data is not None:
-            self.data.to_csv(fname_radical+'_data.csv', index=False, **kwargs)
+            self.data.to_csv(fname_radical + '_data.csv', index=False, **kwargs)
             self.labels.to_csv(fname_radical + '_labels.csv',
-                                                       index=False, **kwargs)
+                               index=False, **kwargs)
 
         else:
             raise ValueError("Data has not yet been generated. \

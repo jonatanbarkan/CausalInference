@@ -30,7 +30,7 @@ from sklearn.preprocessing import scale
 import numpy as np
 import pandas as pd
 import networkx as nx
-from .causal_mechanisms import (LinearMechanism,
+from cdt.data.causal_mechanisms import (LinearMechanism,
                                 Polynomial_Mechanism,
                                 SigmoidAM_Mechanism,
                                 SigmoidMix_Mechanism,
