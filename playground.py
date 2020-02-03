@@ -32,18 +32,30 @@ def draw_cause(k_i, r_i, s_i, m):
     return (x - x.mean()) / x.std()
 
 
-def clipped_func(f, support):
-    def clipped(*args):
-        y_i = f(args)
-        cond = (y_i > support[1]) | (y_i < support[0])
-        y_i[cond] = 0
-        return y_i
+def reduce_support(f, support):
+    def supported(*args):
+        x = args[0]
+        y = f(x)
+        cond = (x > support[1]) | (x < support[0])
+        y[cond] = 0
+        return y
 
-    return clipped
+    return supported
 
 
-n = 5
-m = 7
+def create_mechanism(a_knots, b_knots, support):
+    f = PchipInterpolator(a_knots, b_knots)
+    return reduce_support(f, support)
+
+
+def generate_noiseless_effect(f, cause):
+    effect = f(cause)
+    effect = (effect - effect.mean()) / effect.std()
+    return effect
+
+
+n = 20
+m = 30
 
 r = 5 * np.random.random(n)
 s = 5 * np.random.random(n)
@@ -57,13 +69,19 @@ for i in range(n):
     sd_i = x_i.std()
     support_i = [x_i.min() - sd_i, x_i.max() + sd_i]
     x_i_knots = np.linspace(*support_i, d[i])
-    y_i_knots = np.random.standard_normal(d[i])
-    f_i = PchipInterpolator(x_i_knots, y_i_knots)
-    f_i = clipped_func(f_i, support_i)
-    y_i = f_i(x_i)
-    y_i = (y_i - y_i.mean()) / y_i.std()
+    y_i_knots = np.random.normal(0., 1., d[i])
+    f_i = create_mechanism(x_i_knots, y_i_knots, support_i)
+    y_i = generate_noiseless_effect(f_i, x_i)
 
-    e_i = np.random.normal(0., v[i])
+    e_i = np.random.normal(0., v[i], m)
+    v_x_knots = np.linspace(*support_i, d[i])
+    v_y_knots = np.random.uniform(0, 5, d[i])
+    v_spline = create_mechanism(x_i_knots, v_y_knots, support_i)
+    v_i = v_spline(x_i)
+    noise_i = e_i * v_i
+    y_noisy = y_i + noise_i
+    y_noisy = (y_noisy - y_noisy.mean()) / y_noisy.std()
+    print(np.abs(y_noisy - y_i))
 
     S.append((x_i, y_i))
 S = np.array(S)
