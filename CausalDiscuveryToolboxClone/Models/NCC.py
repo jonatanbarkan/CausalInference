@@ -106,18 +106,22 @@ class NCC_model(th.nn.Module):
         kernel_size (int): Kernel size of the convolutions
     """
 
-    def __init__(self, n_hiddens=100, kernel_size=3):
+    def __init__(self, n_hiddens=100, kernel_size=3, p=0.25):
         """Init the NCC structure with the number of hidden units.
         """
         super(NCC_model, self).__init__()
         self.conv = th.nn.Sequential(th.nn.Conv1d(2, n_hiddens, kernel_size),
+                                     th.nn.BatchNorm1d(n_hiddens, affine=False),
                                      th.nn.ReLU(),
                                      th.nn.Conv1d(n_hiddens, n_hiddens,
                                                   kernel_size),
+                                     th.nn.BatchNorm1d(n_hiddens, affine=False),
                                      th.nn.ReLU())
-        self.batch_norm = th.nn.BatchNorm1d(n_hiddens, affine=False)
+        # self.batch_norm = th.nn.BatchNorm1d(n_hiddens, affine=False)
         self.dense = th.nn.Sequential(th.nn.Linear(n_hiddens, n_hiddens),
+                                      # th.nn.BatchNorm1d(n_hiddens, affine=False),
                                       th.nn.ReLU(),
+                                      th.nn.Dropout(p),
                                       th.nn.Linear(n_hiddens, 1)
                                       )
 
@@ -159,7 +163,7 @@ class NCC(PairwiseModel):
         super(NCC, self).__init__()
         self.model = None
 
-    def fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device=None):
+    def fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True):
         """Fit the NCC model.
 
         Args:
@@ -171,21 +175,26 @@ class NCC(PairwiseModel):
             verbose (bool): verbosity (defaults to ``cdt.SETTINGS.verbose``)
             device (str): cuda or cpu device (defaults to ``cdt.SETTINGS.default_device``)
         """
+
+        if half:
+            batch_size //= 2
         if batch_size > len(x_tr):
             batch_size = len(x_tr)
         verbose, device = SETTINGS.get_default(('verbose', verbose),
                                                ('device', device))
         self.model = NCC_model()
+        # self.model.train()
         opt = th.optim.Adam(self.model.parameters(), lr=learning_rate)
         criterion = th.nn.BCEWithLogitsLoss()
+        # y = th.Tensor(y_tr)
         y = y_tr.values if isinstance(y_tr, pd.DataFrame) else y_tr
         y = th.Tensor(y) / 2 + .5
         # print(y)
         self.model = self.model.to(device)
         y = y.to(device)
-        dataset = []
-        dataset = [th.Tensor(np.vstack([row['A'], row['B']])).t().to(device)
-                   for (idx, row) in x_tr.iterrows()]
+        # dataset = []
+        # dataset = [th.Tensor(x).to(device) for x in x_tr]
+        dataset = [th.Tensor(np.vstack([row['A'], row['B']])).t().to(device) for (idx, row) in x_tr.iterrows()]
         acc = [0]
         da = Dataset(dataset, y, device, batch_size)
         data_per_epoch = (len(dataset) // batch_size)
@@ -196,6 +205,7 @@ class NCC(PairwiseModel):
                     output = []
                     labels = []
                     for batch, label in da:
+
                         # for (batch, label), i in zip(da, t):
                         opt.zero_grad()
                         # print(batch.shape, labels.shape)
@@ -211,7 +221,7 @@ class NCC(PairwiseModel):
                                    th.zeros(len(output))) - th.cat(labels, 0).data.cpu()
                     te.set_postfix(Acc=1 - acc.abs().mean().item())
 
-    def predict_proba(self, dataset, device=None, idx=0):
+    def predict_proba(self, dataset, device="cpu", idx=0):
         """Infer causal directions using the trained NCC pairwise model.
 
         Args:
