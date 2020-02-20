@@ -182,8 +182,6 @@ env.bak/
 venv.bak/
 pip-selfcheck.json
 
-*.pyc
-
 # End of https://www.gitignore.io/api/video,images,pycharm+all
 
 *.pyc
