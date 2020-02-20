@@ -28,6 +28,7 @@ Date : 7/06/2017
 import networkx as nx
 from sklearn.preprocessing import scale
 from pandas import DataFrame, Series
+import numpy as np
 from cdt.utils.Settings import SETTINGS
 
 
@@ -70,6 +71,8 @@ class PairwiseModel(object):
             return self.predict_dataset(x, *args, **kwargs)
         elif type(x) == Series:
             return self.predict_proba((x.iloc[0], x.iloc[1]), *args, **kwargs)
+        elif type(x) == list:
+            return self.predict_list(x, *args, **kwargs)
 
     def predict_proba(self, dataset, idx=0, **kwargs):
         """Prediction method for pairwise causal inference.
@@ -112,6 +115,9 @@ class PairwiseModel(object):
                 DataFrame(res, columns=['SampleID', 'Predictions']).to_csv(
                     printout, index=False)
         return pred
+
+    def predict_list(self, l, device=None, verbose=None):
+        pass
 
     def orient_graph(self, df_data, graph, printout=None, **kwargs):
         """Orient an undirected graph using the pairwise method defined by the subclass.

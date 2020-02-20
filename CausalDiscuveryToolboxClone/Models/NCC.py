@@ -59,11 +59,11 @@ class Dataset(data.Dataset):
         self.labels = self.labels[order]
         # self.dataset, self.labels = zip(*z)
         if self.device == 'cpu':
-            self.set = [([self.dataset[i + j * self.batch_size]
-                          for i in range(self.batch_size)],
-                         th.index_select(self.labels, 0, th.LongTensor([i + j * self.batch_size
-                                                                        for i in range(self.batch_size)])))
-                        for j in range(self.nsets)]
+            self.set = [
+                ([self.dataset[i + j * self.batch_size] for i in range(self.batch_size)],
+                 th.index_select(self.labels, 0,
+                                 th.LongTensor([i + j * self.batch_size for i in range(self.batch_size)])))
+                for j in range(self.nsets)]
         else:
             with th.cuda.device(int(self.device[-1])):
                 self.set = [([self.dataset[i + j * self.batch_size]
@@ -163,7 +163,8 @@ class NCC(PairwiseModel):
         super(NCC, self).__init__()
         self.model = None
 
-    def fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True):
+    def fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True,
+            **kwargs):
         """Fit the NCC model.
 
         Args:
@@ -180,21 +181,21 @@ class NCC(PairwiseModel):
             batch_size //= 2
         if batch_size > len(x_tr):
             batch_size = len(x_tr)
-        verbose, device = SETTINGS.get_default(('verbose', verbose),
-                                               ('device', device))
+        verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
         self.model = NCC_model()
-        # self.model.train()
         opt = th.optim.Adam(self.model.parameters(), lr=learning_rate)
         criterion = th.nn.BCEWithLogitsLoss()
-        # y = th.Tensor(y_tr)
-        y = y_tr.values if isinstance(y_tr, pd.DataFrame) else y_tr
+        if kwargs.get('us'):
+            y = th.Tensor(y_tr)
+        else:
+            y = y_tr.values if isinstance(y_tr, pd.DataFrame) else y_tr
         y = th.Tensor(y) / 2 + .5
-        # print(y)
         self.model = self.model.to(device)
         y = y.to(device)
-        # dataset = []
-        # dataset = [th.Tensor(x).to(device) for x in x_tr]
-        dataset = [th.Tensor(np.vstack([row['A'], row['B']])).t().to(device) for (idx, row) in x_tr.iterrows()]
+        if kwargs.get('us'):
+            dataset = [th.Tensor(x).t().to(device) for x in x_tr]
+        else:
+            dataset = [th.Tensor(np.vstack([row['A'], row['B']])).t().to(device) for (idx, row) in x_tr.iterrows()]
         acc = [0]
         da = Dataset(dataset, y, device, batch_size)
         data_per_epoch = (len(dataset) // batch_size)
@@ -205,7 +206,6 @@ class NCC(PairwiseModel):
                     output = []
                     labels = []
                     for batch, label in da:
-
                         # for (batch, label), i in zip(da, t):
                         opt.zero_grad()
                         # print(batch.shape, labels.shape)
@@ -269,6 +269,28 @@ class NCC(PairwiseModel):
             m = m.astype('float32')
             m = th.from_numpy(m).t().unsqueeze(0)
             dataset.append(m)
+
+        dataset = [m.to(device) for m in dataset]
+        return pd.DataFrame(
+            (th.cat([self.model(m) for m, t in zip(dataset, trange(len(dataset)))], 0).data.cpu().numpy() - .5) * 2)
+
+    def predict_list(self, l, device=None, verbose=None):
+        """
+        Args:
+            l (list): CEPC format list containing the pairs
+            verbose (bool): verbosity (defaults to ``cdt.SETTINGS.verbose``)
+            device (str): cuda or cpu device (defaults to ``cdt.SETTINGS.default_device``)
+
+        Returns:
+            list: list containing the predicted causation coefficients
+        """
+        verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
+        dataset = []
+        for point in l:
+            # m = np.hstack((a, b))
+            point = point.astype('float32')
+            point = th.from_numpy(point).unsqueeze(0)
+            dataset.append(point)
 
         dataset = [m.to(device) for m in dataset]
         return pd.DataFrame(
