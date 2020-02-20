@@ -36,6 +36,7 @@ from CausalDiscuveryToolboxClone.Models.PairwiseModel import PairwiseModel
 from tqdm import trange
 from torch.utils import data
 from cdt.utils.Settings import SETTINGS
+from utils.symmetry_enforcer import th_enforce_symmetry
 
 
 class Dataset(data.Dataset):
@@ -196,19 +197,21 @@ class NCC(PairwiseModel):
             dataset = [th.Tensor(x).t().to(device) for x in x_tr]
         else:
             dataset = [th.Tensor(np.vstack([row['A'], row['B']])).t().to(device) for (idx, row) in x_tr.iterrows()]
-        acc = [0]
+        acc_list = [0]
         da = Dataset(dataset, y, device, batch_size)
         data_per_epoch = (len(dataset) // batch_size)
         with trange(epochs, desc="Epochs", disable=not verbose) as te:
             for epoch in te:
-                with trange(data_per_epoch, desc="Batches of {}".format(batch_size),
+                with trange(data_per_epoch, desc="Batches of 2*{}".format(batch_size),
                             disable=not (verbose and batch_size == len(dataset))) as t:
                     output = []
                     labels = []
                     for batch, label in da:
                         # for (batch, label), i in zip(da, t):
+                        symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label)
+                        batch += symmetric_batch
+                        label = th.cat((label, symmetric_label))
                         opt.zero_grad()
-                        # print(batch.shape, labels.shape)
                         out = th.stack([self.model(m.t().unsqueeze(0)) for m in batch], 0).squeeze(2)
                         loss = criterion(out, label)
                         loss.backward()
@@ -216,10 +219,10 @@ class NCC(PairwiseModel):
                         t.set_postfix(loss=loss.item())
                         opt.step()
                         labels.append(label)
-                    acc = th.where(th.cat(output, 0).data.cpu() > .5,
-                                   th.ones(len(output)),
-                                   th.zeros(len(output))) - th.cat(labels, 0).data.cpu()
+                    acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones(len(output)), th.zeros(len(output))) - \
+                          th.cat(labels, 0).data.cpu()
                     te.set_postfix(Acc=1 - acc.abs().mean().item())
+                    acc_list.append(1 - acc.abs().mean().item())
 
     def predict_proba(self, dataset, device="cpu", idx=0):
         """Infer causal directions using the trained NCC pairwise model.

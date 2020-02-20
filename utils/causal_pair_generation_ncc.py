@@ -6,7 +6,7 @@ from cdt.data import load_dataset
 from sklearn.model_selection import train_test_split
 from CausalDiscuveryToolboxClone.DataGeneration import functions
 import scipy
-from scipy.interpolate import PchipInterpolator, CubicHermiteSpline
+from scipy.interpolate import PchipInterpolator, CubicHermiteSpline, UnivariateSpline
 import numpy as np
 from scipy.special import expit
 import os
@@ -46,6 +46,11 @@ def reduce_support(f, support):
 
 def create_mechanism(a_knots, b_knots, support):
     f = PchipInterpolator(a_knots, b_knots)
+    return reduce_support(f, support)
+
+
+def create_noise_mechanism(a_knots, b_knots, support):
+    f = UnivariateSpline(a_knots, b_knots)
     return reduce_support(f, support)
 
 
