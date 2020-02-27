@@ -39,6 +39,8 @@ from os import path, makedirs
 from torch.utils import data
 from cdt.utils.Settings import SETTINGS
 from utils.symmetry_enforcer import th_enforce_symmetry
+from itertools import chain
+from scipy.special import expit
 
 
 class Dataset(data.Dataset):
@@ -113,7 +115,7 @@ class NCC_model(th.nn.Module):
         """Init the NCC structure with the number of hidden units.
         """
         super(NCC_model, self).__init__()
-        self.conv = th.nn.Sequential(th.nn.Conv1d(2, n_hiddens, kernel_size),
+        self.conv = th.nn.Sequential(th.nn.Conv1d(2, n_hiddens, kernel_size, ),
                                      th.nn.BatchNorm1d(n_hiddens, affine=False),
                                      th.nn.ReLU(),
                                      th.nn.Conv1d(n_hiddens, n_hiddens,
@@ -124,7 +126,7 @@ class NCC_model(th.nn.Module):
         self.dense = th.nn.Sequential(th.nn.Linear(n_hiddens, n_hiddens),
                                       # th.nn.BatchNorm1d(n_hiddens, affine=False),
                                       th.nn.ReLU(),
-                                      th.nn.Dropout(p),
+                                      # th.nn.Dropout(p),
                                       th.nn.Linear(n_hiddens, 1)
                                       )
 
@@ -181,17 +183,24 @@ class NCC(PairwiseModel):
             for param_name, param in architecture_dict[part].named_parameters():
                 param.requires_grad = False
         # for name, param in model.named_parameters():
-        #     print(f"{name}'s layer wieghts:\n{param.data}")
+        #     print(f"{name}'s layer weights:\n{param.data}")
 
     def save_model(self, foler_path, file_path="model.pth"):
         model = self.model
         if model is not None:
-            makedirs(foler_path,exist_ok=True)
+            makedirs(foler_path, exist_ok=True)
             full_path = path.join(foler_path, file_path)
             th.save(model.state_dict(), full_path)
         else:
             print('cannot save (no model)')
 
+    def load_model(self, folder_path, file_path):
+        full_path = path.join(folder_path, file_path)
+        if path.exists(full_path):
+            self.model = NCC_model()
+            self.model.load_state_dict(th.load(full_path))
+        else:
+            print(f"path {full_path} doesn't exist")
 
     def _fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True):
         """Fit the NCC model.
@@ -211,18 +220,22 @@ class NCC(PairwiseModel):
         if batch_size > len(x_tr):
             batch_size = len(x_tr)
         verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
-        model = self.get_model()
-        opt = th.optim.Adam(model.parameters(), lr=learning_rate)
+        model = self.model
+        # opt = th.optim.Adam(model.parameters(), lr=learning_rate)
+        opt = th.optim.RMSprop(model.parameters(), lr=learning_rate)
         criterion = th.nn.BCEWithLogitsLoss()
         model = model.to(device)
         y = th.Tensor(y_tr)
         y = y.to(device)
         dataset = [th.Tensor(x).t().to(device) for x in x_tr]
-        # acc_list = [0]
         da = Dataset(dataset, y, device, batch_size)
         data_per_epoch = (len(dataset) // batch_size)
+
+        train_accuracy = []
+
         with trange(epochs, desc="Epochs", disable=not verbose) as te:
             for _ in te:
+
                 with trange(data_per_epoch, desc="Batches of 2*{}".format(batch_size),
                             disable=not (verbose and batch_size == len(dataset))) as t:
                     output = []
@@ -236,14 +249,17 @@ class NCC(PairwiseModel):
                         out = th.stack([model(m.t().unsqueeze(0)) for m in batch], 0).squeeze(2)
                         loss = criterion(out, label)
                         loss.backward()
-                        output.append(out)
+                        output.append(expit(out.data.cpu()))
                         t.set_postfix(loss=loss.item())
                         opt.step()
-                        labels.append(label)
-                    acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones(len(output)), th.zeros(len(output))) - \
+                        labels.append(label.data.cpu())
+                    length = th.cat(output, 0).data.cpu().numpy().size
+                    acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones((length, 1)).data.cpu(),
+                                   th.zeros((length, 1)).data.cpu()) - \
                           th.cat(labels, 0).data.cpu()
-                    te.set_postfix(Acc=1 - acc.abs().mean().item())
-                    # acc_list.append(1 - acc.abs().mean().item())
+                    Acc = 1 - acc.abs().mean().item()
+                    te.set_postfix(Acc=Acc)
+                    train_accuracy.append(Acc)
 
     def fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True,
             **kwargs):
@@ -306,7 +322,7 @@ class NCC(PairwiseModel):
                     te.set_postfix(Acc=1 - acc.abs().mean().item())
                     acc_list.append(1 - acc.abs().mean().item())
 
-    def set_dict_vals(self, X, y, device):
+    def compute_values(self, X, y, device):
         y_val = th.Tensor(y)
         y_val = y_val.to(device)
         dataset = [th.Tensor(x).t().to(device) for x in X]
@@ -317,40 +333,42 @@ class NCC(PairwiseModel):
             symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label)
             batch += symmetric_batch
             labels = th.cat((label, symmetric_label))
-            preds = self._predict(batch)
-            err_total_vec = preds - labels.squeeze().data.cpu()
-            err_causal = err_total_vec[:cause_size].abs().mean().item()
-            err_anti = err_total_vec[cause_size:].abs().mean().item()
-            err_total = err_total_vec.abs().mean().item()
-            symmetry_check = 0.5 * (1 - preds[:cause_size] + preds[cause_size:]).mean()
+            output = self._predict(batch)
+            preds = th.where(th.Tensor(output) > .5, th.ones(len(output)), th.zeros(len(output)))
+            err_total_vec = (preds - labels.squeeze().data.cpu()).abs().numpy()
+            err_causal = err_total_vec[:cause_size].mean()
+            err_anti = err_total_vec[cause_size:].mean()
+            err_total = err_total_vec.mean()
+            symmetry_check = 0.5 * (1 - output[:cause_size] + output[cause_size:]).mean()
 
         return err_total, err_causal, err_anti, symmetry_check
 
-    def update_dicts(self, error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check,
-                     dataset_type):
+    @staticmethod
+    def log_values(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check,
+                   dataset_type):
         error_dict['causal'][dataset_type].append(err_causal)
         error_dict['anticausal'][dataset_type].append(err_anti)
         error_dict['total'][dataset_type].append(err_total)
+        print(err_total)
         symmetry_check_dict[dataset_type].append(symmetry_check)
 
-    def create_train_validation_dicts(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32,
-                                      learning_rate=0.01, verbose=None, device='cpu', half=True):
+    def train_and_validate(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32,
+                           learning_rate=0.01, verbose=None, device='cpu', half=True):
         error_dict = {'causal': {'train': [], 'validation': []},
                       'anticausal': {'train': [], 'validation': []},
                       'total': {'train': [], 'validation': []}}
         symmetry_check_dict = {'train': [], 'validation': []}
-        self.model = NCC_model()
+        self.model = self.get_model()
         for epoch in range(epochs):
             self.model.train()
             self._fit(X_tr, y_tr, epochs=1, batch_size=batch_size, learning_rate=learning_rate, device=device,
                       half=half, verbose=verbose)
-            self.freeze_weights('encoder')
             self.model.eval()
-            err_total, err_causal, err_anti, symmetry_check = self.set_dict_vals(X_tr, y_tr, device)
-            self.update_dicts(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check, 'train')
-            err_total, err_causal, err_anti, symmetry_check = self.set_dict_vals(X_val, y_val, device)
-            self.update_dicts(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check,
-                              'validation')
+            err_total, err_causal, err_anti, symmetry_check = self.compute_values(X_tr, y_tr, device)
+            self.log_values(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check, 'train')
+            err_total, err_causal, err_anti, symmetry_check = self.compute_values(X_val, y_val, device)
+            self.log_values(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check,
+                            'validation')
 
         return error_dict, symmetry_check_dict
 
@@ -360,11 +378,8 @@ class NCC(PairwiseModel):
         return expit(model(th.from_numpy(X)).data.cpu().numpy())
 
     def _predict(self, batch):
-        model = self.model
-        model.eval()
-        output = th.stack([model(m.t().unsqueeze(0)) for m in batch], 0).squeeze()
-        preds = th.where(output.data.cpu() > .5, th.ones(len(output)), th.zeros(len(output)))
-        return preds
+        output = expit(th.stack([self.model(m.t().unsqueeze(0)) for m in batch], 0).squeeze().detach().numpy())
+        return output
 
     def predict_proba(self, dataset, device="cpu", idx=0):
         """Infer causal directions using the trained NCC pairwise model.

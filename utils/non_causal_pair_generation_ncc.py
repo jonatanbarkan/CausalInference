@@ -60,12 +60,18 @@ def generate_noiseless_effect(f, cause):
     return effect
 
 
+def generate_effect(cause_knots, effect_knots):
+    x_i_knots = np.linspace(*support_i, d[i])
+    y_i_knots = np.random.normal(0., 1., d[i])
+    f_i = create_mechanism(x_i_knots, y_i_knots, support_i)
+
+
 if __name__ == '__main__':
 
     save = True
     folder_path = os.path.dirname(os.getcwd())
-    name = 'full_xy'
-    n = 5000
+    name = 'non_causal_xy_temp'
+    n = 20
     # m = 30
     m = np.random.randint(100, 1500, n)
 
@@ -97,7 +103,7 @@ if __name__ == '__main__':
         y_noisy = (y_noisy - y_noisy.mean()) / y_noisy.std()
         # print(np.abs(y_noisy - y_i))
 
-        S.append([x_i, y_i])
+        S.append([x_i, y_noisy])
         L.append(0)
     S = np.array(S)
     L = np.array(L)

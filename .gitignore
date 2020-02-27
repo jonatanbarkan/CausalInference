@@ -185,3 +185,4 @@ pip-selfcheck.json
 # End of https://www.gitignore.io/api/video,images,pycharm+all
 
 *.pyc
+*.npz
