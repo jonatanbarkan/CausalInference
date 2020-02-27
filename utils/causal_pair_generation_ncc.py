@@ -63,7 +63,7 @@ def generate_noiseless_effect(f, cause):
 if __name__ == '__main__':
 
     save = True
-    file_path = os.path.dirname(os.getcwd())
+    folder_path = os.path.dirname(os.getcwd())
     name = 'temp'
     n = 20
     # m = 30
@@ -102,4 +102,6 @@ if __name__ == '__main__':
     S = np.array(S)
     L = np.array(L)
     if save:
-        np.savez_compressed(os.path.join(file_path, 'Data', name), data=S, labels=L)
+        data_folder_path = os.path.join(folder_path, 'Data')
+        os.makedirs(data_folder_path, exist_ok=True)
+        np.savez_compressed(os.path.join(data_folder_path, name), data=S, labels=L)
