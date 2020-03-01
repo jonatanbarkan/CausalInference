@@ -23,16 +23,17 @@ def plot_train_val(y_train, y_val, epochs, params, step=1):
     plt.close()
 
 
-def make_plots(error_dict, symmetry_check_dict, epochs, model_type='NCC', step=1):
+def make_plots(logged_values, model_name='ez'):
     params = dict()
     params["xlabel"] = "epochs"
-    params["folder_path"] = path.join(getcwd(), "Plots", model_type)
+    params["folder_path"] = path.join(getcwd(), "Plots", model_name)
+    makedirs(params["folder_path"], exist_ok=True)
     fig, ax = plt.subplots(4)
     ax = ax.flat
-    causal = pd.DataFrame(error_dict['causal'])
-    anti_causal = pd.DataFrame(error_dict['anticausal'])
-    total = pd.DataFrame(error_dict['total'])
-    symmetry = pd.DataFrame(symmetry_check_dict)
+    causal = pd.DataFrame(logged_values['causal'])
+    anti_causal = pd.DataFrame(logged_values['anticausal'])
+    total = pd.DataFrame(logged_values['total'])
+    symmetry = pd.DataFrame(logged_values['symmetry'])
     sns.lineplot(data=causal, ax=ax[0])
     ax[0].set_title('causal')
     sns.lineplot(data=anti_causal, ax=ax[1])

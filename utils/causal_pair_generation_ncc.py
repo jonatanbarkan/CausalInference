@@ -11,7 +11,9 @@ import numpy as np
 from scipy.special import expit
 import os
 import argparse
+
 np.random.seed(0)
+
 
 def draw_mixture_weights(k_i):
     mw = np.abs(np.random.standard_normal(k_i))
@@ -57,7 +59,8 @@ class CauseEffectPairs:
     def __init__(self, dataset_size, num_effects=1, dist_size_vec=None, r=None, s=None, k=None):
         self.dataset_size = dataset_size
         self.num_effects = num_effects
-        self.dist_size_vec = np.random.randint(100, 1500, dataset_size) if dist_size_vec is None else dist_size_vec
+        # self.dist_size_vec = np.random.randint(100, 1500, dataset_size) if dist_size_vec is None else dist_size_vec
+        self.dist_size_vec = 200 * np.ones(dataset_size, dtype=np.int32)
         self.r = 5 * np.random.random(dataset_size) if r is None else r
         self.s = 5 * np.random.random(dataset_size) if s is None else s
         self.k = np.random.randint(1, 6, dataset_size) if k is None else k
@@ -83,7 +86,8 @@ class CauseEffectPairs:
         cause = []
         for i in range(n):
             cause_val = draw_cause(k[i], r[i], s[i], m[i])
-            cause.append(cause_val.reshape((-1, 1)))
+            # cause.append(cause_val.reshape((1,  -1)))
+            cause.append(cause_val)
         return cause
 
     def create_effect(self, cause):
@@ -99,7 +103,8 @@ class CauseEffectPairs:
             f_i = create_mechanism(cause_i_knots, effect_i_knots, supports[i])
             tmp_effect_i = generate_noiseless_effect(f_i, cause[i])
 
-            e_i = np.random.normal(0., v[i], m[i]).reshape((-1, 1))
+            # e_i = np.random.normal(0., v[i], m[i]).reshape((1,  -1))
+            e_i = np.random.normal(0., v[i], m[i])
             e_i__knots = np.random.uniform(0, 5, d[i])
             g_i = create_mechanism(cause_i_knots, e_i__knots, supports[i])
             v_i = g_i(cause[i])
@@ -121,30 +126,33 @@ class CauseEffectPairs:
 
 def save_causal(ce_pairs, folder_path, file_name, *args):
     cause, effect = ce_pairs[0]
-    data = np.array(list(map(lambda i: np.hstack((cause[i], effect[i])), range(len(cause)))))
-    labels = np.zeros(data.shape[0])
-    np.savez_compressed(os.path.join(folder_path, file_name), data=data, labels=labels)
+    data = np.array([[cause[i], effect[i]] for i in range(len(cause))])
+    # labels = np.zeros(data.shape[0])
+    np.savez_compressed(os.path.join(folder_path, file_name), data=data)
 
 
 def save_confounded(ce_pairs, folder_path, file_name, *args):
     n, m, r, s, k = args
-    effect_x, effect_y = [ce_pair[1] for ce_pair in ce_pairs]
-    data_confounded = np.array(list(map(lambda i: np.hstack((effect_x[i], effect_y[i])), range(len(effect_x)))))
-    labels_confounded = np.zeros(data_confounded.shape[0])
-    cause_effect_pair = CauseEffectPairs(n, num_effects=1, dist_size_vec=m, r=r, s=s, k=k)
+    # effect_x, effect_y = [ce_pair[1] for ce_pair in ce_pairs]
+    # z_cause, effect_x, effect_y = [ce_pair[1] for ce_pair in ce_pairs]
+    cause_z, effect_x, effect_y = ce_pairs[0][0], ce_pairs[0][1], ce_pairs[1][1]
+    # data_confounded = np.array(list(map(lambda i: np.hstack((effect_x[i], effect_y[i])), range(len(effect_x)))))
+    data_confounded = np.array([[cause_z[i], effect_x[i], effect_y[i]] for i in range(len(effect_x))])
+    # labels_confounded = np.zeros(len(effect_x))
+    # cause_effect_pair = CauseEffectPairs(n, num_effects=1, dist_size_vec=m, r=r, s=s, k=k)
     # effect = cause_effect_pair.create_effect(effect_x)
-    cause, effect = cause_effect_pair.create_cause_effect_pairs()
-    data_causal = np.array(list(map(lambda i: np.hstack((cause[i], effect[i])), range(len(cause)))))
-    labels_causal = np.ones(data_causal.shape[0])
-    np.savez_compressed(os.path.join(folder_path, file_name), data_confounded=data_confounded,
-                        labels_confounded=labels_confounded, data_causal=data_causal, labels_causal=labels_causal)
+    # cause, effect = cause_effect_pair.create_cause_effect_pairs()[0]
+    # data_causal = np.array([[cause[i], effect[i]] for i in range(len(cause))])
+    # labels_causal = np.ones(data_causal.shape[0])
+    np.savez_compressed(os.path.join(folder_path, file_name), data=data_confounded)
 
 
 def create_pairwise_dataset(args):
     n = args.size
     num_effects = args.num_effects
+    assert num_effects in [1, 2]
     save = args.save
-    file_name = args.file_name
+    file_name = args.file_name + '_{}'.format('confounded' if num_effects == 2 else 'causal')
     CE_pairs = CauseEffectPairs(n, num_effects)
     ce_pairs = CE_pairs.create_cause_effect_pairs()
     r, s, k = CE_pairs.get_r(), CE_pairs.get_s(), CE_pairs.get_k()
@@ -164,8 +172,8 @@ if __name__ == '__main__':
     parser.add_argument('-size', default=500)
     parser.add_argument('-num_effects', default=2)
     parser.add_argument('-save', default=True)
-    parser.add_argument('-file_name', default='full_xy_check')
-    args = parser.parse_args()
-    create_pairwise_dataset(args)
+    parser.add_argument('-file_name', default='temp')
+    arguments = parser.parse_args()
+    create_pairwise_dataset(arguments)
     # data, labels = load_dataset('tuebingen')
     # data, labels = functions.swap_cause_effect(data, labels)

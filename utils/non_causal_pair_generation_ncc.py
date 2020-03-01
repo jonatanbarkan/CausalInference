@@ -84,7 +84,8 @@ if __name__ == '__main__':
     L = []
 
     for i in range(n):
-        m_i = m[i]
+        # m_i = m[i]
+        m_i = m[0]
         x_i = draw_cause(k[i], r[i], s[i], m_i)
         sd_i = x_i.std()
         support_i = [x_i.min() - sd_i, x_i.max() + sd_i]

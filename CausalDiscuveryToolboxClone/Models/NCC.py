@@ -115,19 +115,30 @@ class NCC_model(th.nn.Module):
         """Init the NCC structure with the number of hidden units.
         """
         super(NCC_model, self).__init__()
-        self.conv = th.nn.Sequential(th.nn.Conv1d(2, n_hiddens, kernel_size, ),
-                                     th.nn.BatchNorm1d(n_hiddens, affine=False),
-                                     th.nn.ReLU(),
-                                     th.nn.Conv1d(n_hiddens, n_hiddens,
-                                                  kernel_size),
-                                     th.nn.BatchNorm1d(n_hiddens, affine=False),
-                                     th.nn.ReLU())
+
+        embedding_1 = th.nn.Conv1d(2, n_hiddens, kernel_size, )
+        embedding_batch_norm_1 = th.nn.BatchNorm1d(n_hiddens, affine=False, )
+        embedding_activation_1 = th.nn.ReLU()
+
+        embedding_2 = th.nn.Conv1d(n_hiddens, n_hiddens, kernel_size, )
+        embedding_batch_norm_2 = th.nn.BatchNorm1d(n_hiddens, affine=False, )
+        embedding_activation_2 = th.nn.ReLU()
+
+        self.conv = th.nn.Sequential(embedding_1,
+                                     embedding_batch_norm_1,
+                                     embedding_activation_1,
+                                     embedding_2,
+                                     embedding_batch_norm_2,
+                                     embedding_activation_2)
         # self.batch_norm = th.nn.BatchNorm1d(n_hiddens, affine=False)
-        self.dense = th.nn.Sequential(th.nn.Linear(n_hiddens, n_hiddens),
-                                      # th.nn.BatchNorm1d(n_hiddens, affine=False),
-                                      th.nn.ReLU(),
-                                      # th.nn.Dropout(p),
-                                      th.nn.Linear(n_hiddens, 1)
+        dense_1 = th.nn.Linear(n_hiddens, n_hiddens)
+        dense_activation_1 = th.nn.ReLU()
+        drop_dense_1 = th.nn.Dropout(p)
+        dense_2 = th.nn.Linear(n_hiddens, 1)
+        self.dense = th.nn.Sequential(dense_1,
+                                      dense_activation_1,
+                                      drop_dense_1,
+                                      dense_2
                                       )
 
     def get_architecture_dict(self):
@@ -171,6 +182,23 @@ class NCC(PairwiseModel):
     def __init__(self):
         super(NCC, self).__init__()
         self.model = None
+        self.opt = None
+        self.criterion = None
+
+        self.log_dict = self.create_log_dict()
+
+    @staticmethod
+    def create_log_dict():
+        return {
+            'causal':
+                {'train': [], 'validation': []},
+            'anticausal':
+                {'train': [], 'validation': []},
+            'total':
+                {'train': [], 'validation': []},
+            'symmetry':
+                {'train': [], 'validation': []},
+        }
 
     def get_model(self):
         self.model = self.model if self.model is not None else NCC_model()
@@ -201,6 +229,55 @@ class NCC(PairwiseModel):
             self.model.load_state_dict(th.load(full_path))
         else:
             print(f"path {full_path} doesn't exist")
+
+    def create_loss(self, learning_rate, optimizer):
+        if optimizer.lower() == 'rms':
+            self.opt = th.optim.RMSprop(self.model.parameters(), lr=learning_rate)
+        elif optimizer.lower() == 'adam':
+            self.opt = th.optim.Adam(self.model.parameters(), lr=learning_rate)
+        else:
+            raise NotImplemented
+        self.criterion = th.nn.BCEWithLogitsLoss()
+
+    def fit_clean(self, train_data, train_labels, validation_data, validation_labels, epochs=30, batch_size=16,
+                  verbose=None, device='cpu'):
+        verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
+        model = self.model.to(device)
+        y = th.Tensor(train_labels)
+        y = y.to(device)
+        dataset = [th.Tensor(x).t().to(device) for x in train_data]
+        dat = Dataset(dataset, y, device, batch_size)
+        data_per_epoch = (len(dataset) // batch_size)
+
+        with trange(epochs, desc="Epochs", disable=not verbose) as te:
+            for _ in te:
+                self.model.train()
+                with trange(data_per_epoch, desc="Batches of 2*{}".format(batch_size),
+                            disable=not (verbose and batch_size == len(dataset))) as t:
+                    output = []
+                    labels = []
+                    for batch, label in dat:
+                        symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label)
+                        batch += symmetric_batch
+                        label = th.cat((label, symmetric_label))
+                        self.opt.zero_grad()
+                        out = th.stack([model(m.t().unsqueeze(0)) for m in batch], 0).squeeze()
+                        loss = self.criterion(out, label)
+                        loss.backward()
+                        output.append(expit(out.data.cpu()))
+                        t.set_postfix(loss=loss.item())
+                        self.opt.step()
+                        labels.append(label.data.cpu())
+                    length = th.cat(output, 0).data.cpu().numpy().size
+                    acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones((length, 1)).data.cpu(),
+                                   th.zeros((length, 1)).data.cpu()) - \
+                          th.cat(labels, 0).data.cpu()
+                    Acc = 1 - acc.abs().mean().item()
+                    te.set_postfix(Acc=Acc)
+
+                self.model.eval()
+                self.log_values(*self.compute_values(train_data, train_labels, device), 'train')
+                self.log_values(*self.compute_values(validation_data, validation_labels, device), 'validation')
 
     def _fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True):
         """Fit the NCC model.
@@ -322,35 +399,30 @@ class NCC(PairwiseModel):
                     te.set_postfix(Acc=1 - acc.abs().mean().item())
                     acc_list.append(1 - acc.abs().mean().item())
 
-    def compute_values(self, X, y, device):
-        y_val = th.Tensor(y)
-        y_val = y_val.to(device)
-        dataset = [th.Tensor(x).t().to(device) for x in X]
+    def compute_values(self, X, y, device, anti=True):
+        y_val = th.Tensor(y).to(device)
+        batch = [th.Tensor(x).t().to(device) for x in X]
+        batch_symmetric, symmetric_label = th_enforce_symmetry(batch, y_val, anti)
+        batch = batch + batch_symmetric
+        labels = th.cat((y_val, symmetric_label)).squeeze().data.cpu().numpy()
+        logits = self.predict_list(batch)
+        output = np.array([expit(logit.item()) for logit in logits])
         cause_size = len(X)
-        da = Dataset(dataset, y_val, device, cause_size)
-        err_total, err_causal, err_anti, symmetry_check = None, None, None, None
-        for batch, label in da:
-            symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label)
-            batch += symmetric_batch
-            labels = th.cat((label, symmetric_label))
-            output = self._predict(batch)
-            preds = th.where(th.Tensor(output) > .5, th.ones(len(output)), th.zeros(len(output)))
-            err_total_vec = (preds - labels.squeeze().data.cpu()).abs().numpy()
-            err_causal = err_total_vec[:cause_size].mean()
-            err_anti = err_total_vec[cause_size:].mean()
-            err_total = err_total_vec.mean()
-            symmetry_check = 0.5 * (1 - output[:cause_size] + output[cause_size:]).mean()
+        preds = np.where(output > .5, np.ones(len(output)), np.zeros(len(output)))
+        err_total_vec = np.abs(preds - labels)
+        err_causal = err_total_vec[:cause_size].mean()
+        err_anti = err_total_vec[cause_size:].mean()
+        err_total = err_total_vec.mean()
+        symmetry_check = 0.5 * (1 - output[:cause_size] + output[cause_size:]).mean()
 
         return err_total, err_causal, err_anti, symmetry_check
 
-    @staticmethod
-    def log_values(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check,
-                   dataset_type):
-        error_dict['causal'][dataset_type].append(err_causal)
-        error_dict['anticausal'][dataset_type].append(err_anti)
-        error_dict['total'][dataset_type].append(err_total)
-        print(err_total)
-        symmetry_check_dict[dataset_type].append(symmetry_check)
+    def log_values(self, err_total, err_causal, err_anti, symmetry_check, dataset_type):
+        assert dataset_type in ['train', 'validation']
+        self.log_dict['causal'][dataset_type].append(err_causal)
+        self.log_dict['anticausal'][dataset_type].append(err_anti)
+        self.log_dict['total'][dataset_type].append(err_total)
+        self.log_dict['symmetry'][dataset_type].append(symmetry_check)
 
     def train_and_validate(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32,
                            learning_rate=0.01, verbose=None, device='cpu', half=True):
@@ -360,7 +432,7 @@ class NCC(PairwiseModel):
         symmetry_check_dict = {'train': [], 'validation': []}
         self.model = self.get_model()
         for epoch in range(epochs):
-            self.model.train()
+            # self.model.train()
             self._fit(X_tr, y_tr, epochs=1, batch_size=batch_size, learning_rate=learning_rate, device=device,
                       half=half, verbose=verbose)
             self.model.eval()
@@ -371,6 +443,10 @@ class NCC(PairwiseModel):
                             'validation')
 
         return error_dict, symmetry_check_dict
+
+    def train(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32, verbose=None, device='cpu', ):
+        self.fit_clean(X_tr, y_tr, X_val, y_val, epochs=epochs, batch_size=batch_size, device=device, verbose=verbose)
+        return self.log_dict
 
     def _predict_proba(self, X):
         model = self.model
@@ -445,13 +521,20 @@ class NCC(PairwiseModel):
             list: list containing the predicted causation coefficients
         """
         verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
-        dataset = []
-        for point in l:
-            # m = np.hstack((a, b))
-            point = point.astype('float32')
-            point = th.from_numpy(point).unsqueeze(0)
-            dataset.append(point)
+        # points = []
+        # out = th.stack([self.model(m.t().unsqueeze(0)) for m in l], 0).squeeze()
+        # for point in l:
+        #     m = np.hstack((a, b))
+        # point = point.astype('float32')
+        # point = th.from_numpy(point).unsqueeze(0)
+        # points.append(point)
+        # points = [m.to(device) for m in points]
+        # a = [self.model(m.t().unsqueeze(0)) for m in l]
+        return [self.model(m.t().unsqueeze(0)) for m in l]
+        # return pd.DataFrame(
+        #     (th.cat([self.model(m) for m, t in zip(dataset, trange(len(dataset)))], 0).data.cpu().numpy() - .5) * 2)
 
-        dataset = [m.to(device) for m in dataset]
-        return pd.DataFrame(
-            (th.cat([self.model(m) for m, t in zip(dataset, trange(len(dataset)))], 0).data.cpu().numpy() - .5) * 2)
+    def pointification(self, point, device):
+        point = point.astype('float32')
+        point = th.from_numpy(point).unsqueeze(0)
+        return point.to(device)
