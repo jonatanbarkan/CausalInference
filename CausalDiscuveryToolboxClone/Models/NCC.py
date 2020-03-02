@@ -37,6 +37,7 @@ from CausalDiscuveryToolboxClone.Models.PairwiseModel import PairwiseModel
 from tqdm import trange
 from os import path, makedirs
 from torch.utils import data
+import torch.nn as nn
 from cdt.utils.Settings import SETTINGS
 from utils.symmetry_enforcer import th_enforce_symmetry
 from itertools import chain
@@ -103,7 +104,7 @@ class Dataset(data.Dataset):
     #     return self.dataset[index], self.labels[index]
 
 
-class NCC_model(th.nn.Module):
+class NCC_model(nn.Module):
     """NCC model structure.
 
     Args:
@@ -116,30 +117,57 @@ class NCC_model(th.nn.Module):
         """
         super(NCC_model, self).__init__()
 
-        embedding_1 = th.nn.Conv1d(2, n_hiddens, kernel_size, )
-        embedding_batch_norm_1 = th.nn.BatchNorm1d(n_hiddens, affine=False, )
-        embedding_activation_1 = th.nn.ReLU()
-
-        embedding_2 = th.nn.Conv1d(n_hiddens, n_hiddens, kernel_size, )
-        embedding_batch_norm_2 = th.nn.BatchNorm1d(n_hiddens, affine=False, )
-        embedding_activation_2 = th.nn.ReLU()
-
-        self.conv = th.nn.Sequential(embedding_1,
-                                     embedding_batch_norm_1,
-                                     embedding_activation_1,
-                                     embedding_2,
-                                     embedding_batch_norm_2,
-                                     embedding_activation_2)
+        # embedding_1 = nn.Conv1d(2, n_hiddens, kernel_size, )
+        # embedding_batch_norm_1 = nn.BatchNorm1d(n_hiddens, affine=False, )
+        # embedding_activation_1 = nn.ReLU()
+        #
+        # embedding_2 = nn.Conv1d(n_hiddens, n_hiddens, kernel_size, )
+        # embedding_batch_norm_2 = nn.BatchNorm1d(n_hiddens, affine=False, )
+        # embedding_activation_2 = nn.ReLU()
+        #
+        # self.conv = nn.Sequential(embedding_1,
+        #                              embedding_batch_norm_1,
+        #                              embedding_activation_1,
+        #                              embedding_2,
+        #                              embedding_batch_norm_2,
+        #                              embedding_activation_2)
+        # # self.batch_norm = nn.BatchNorm1d(n_hiddens, affine=False)
+        # dense_1 = nn.Linear(n_hiddens, n_hiddens)
+        # dense_activation_1 = nn.ReLU()
+        # drop_dense_1 = nn.Dropout(p)
+        # dense_2 = nn.Linear(n_hiddens, 1)
+        # self.dense = nn.Sequential(dense_1,
+        #                               dense_activation_1,
+        #                               drop_dense_1,
+        #                               dense_2
+        #                               )
+        self.conv = th.nn.Sequential(th.nn.Conv1d(2, n_hiddens, kernel_size),
+                                     th.nn.BatchNorm1d(n_hiddens, affine=False),
+                                     th.nn.ReLU(),
+                                     th.nn.Conv1d(n_hiddens, n_hiddens,
+                                                  kernel_size),
+                                     th.nn.BatchNorm1d(n_hiddens, affine=False),
+                                     th.nn.ReLU())
+        self.conv.apply(self.init_weights)
         # self.batch_norm = th.nn.BatchNorm1d(n_hiddens, affine=False)
-        dense_1 = th.nn.Linear(n_hiddens, n_hiddens)
-        dense_activation_1 = th.nn.ReLU()
-        drop_dense_1 = th.nn.Dropout(p)
-        dense_2 = th.nn.Linear(n_hiddens, 1)
-        self.dense = th.nn.Sequential(dense_1,
-                                      dense_activation_1,
-                                      drop_dense_1,
-                                      dense_2
+        self.dense = th.nn.Sequential(th.nn.Linear(n_hiddens, n_hiddens),
+                                      # th.nn.BatchNorm1d(n_hiddens, affine=False),
+                                      th.nn.ReLU(),
+                                      th.nn.Dropout(p),
+                                      th.nn.Linear(n_hiddens, 1)
                                       )
+        self.dense.apply(self.init_weights)
+
+    @staticmethod
+    def init_weights(m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform(m.weight)
+            # m.bias.data.fill_(0.01)
+        elif isinstance(m, nn.Conv1d):
+            nn.init.kaiming_normal_(m.weight)
+            # m.bias.data.fill_(0.01)
+
+
 
     def get_architecture_dict(self):
         architecture_dict = {'encoder': self.conv, 'classifier': self.dense}
@@ -237,7 +265,7 @@ class NCC(PairwiseModel):
             self.opt = th.optim.Adam(self.model.parameters(), lr=learning_rate)
         else:
             raise NotImplemented
-        self.criterion = th.nn.BCEWithLogitsLoss()
+        self.criterion = nn.BCEWithLogitsLoss()
 
     def fit_clean(self, train_data, train_labels, validation_data, validation_labels, epochs=30, batch_size=16,
                   verbose=None, device='cpu'):
@@ -300,7 +328,7 @@ class NCC(PairwiseModel):
         model = self.model
         # opt = th.optim.Adam(model.parameters(), lr=learning_rate)
         opt = th.optim.RMSprop(model.parameters(), lr=learning_rate)
-        criterion = th.nn.BCEWithLogitsLoss()
+        criterion = nn.BCEWithLogitsLoss()
         model = model.to(device)
         y = th.Tensor(y_tr)
         y = y.to(device)
@@ -359,7 +387,7 @@ class NCC(PairwiseModel):
         verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
         model = self.get_model()
         opt = th.optim.Adam(model.parameters(), lr=learning_rate)
-        criterion = th.nn.BCEWithLogitsLoss()
+        criterion = nn.BCEWithLogitsLoss()
         if kwargs.get('us'):
             y = th.Tensor(y_tr)
         else:

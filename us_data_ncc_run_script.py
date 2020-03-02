@@ -89,7 +89,7 @@ def split_data(dat, lab, train_size=0.8):
 
 def main(args):
     # load data
-    data, labels = create_data(path.join(getcwd(), 'Data'), 'temp_causal', 0)
+    data, labels = create_data(path.join(getcwd(), 'Data'), args.file_model, 0)
 
     # split data
     X_tr, X_test, y_tr, y_test = split_data(data, labels)
@@ -109,7 +109,7 @@ if __name__ == '__main__':
     parser.add_argument('-size', default=500)
     parser.add_argument('-num_effects', default=2)
     parser.add_argument('-save', default=True)
-    parser.add_argument('-file_name', default='temp')
+    parser.add_argument('-file_model', default='temp_confounded')
     parser.add_argument('-epochs', default=3)
     arguments = parser.parse_args()
     main(arguments)
