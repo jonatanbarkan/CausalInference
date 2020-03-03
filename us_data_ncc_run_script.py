@@ -109,7 +109,7 @@ if __name__ == '__main__':
     parser.add_argument('-size', default=500)
     parser.add_argument('-num_effects', default=2)
     parser.add_argument('-save', default=True)
-    parser.add_argument('-file_model', default='temp_confounded')
+    parser.add_argument('-file_model', default='temp_causal')
     parser.add_argument('-epochs', default=3)
     arguments = parser.parse_args()
     main(arguments)

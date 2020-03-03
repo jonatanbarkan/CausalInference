@@ -24,27 +24,45 @@ def plot_train_val(y_train, y_val, epochs, params, step=1):
 
 
 def make_plots(logged_values, model_name='ez'):
-    params = dict()
-    params["xlabel"] = "epochs"
-    params["folder_path"] = path.join(getcwd(), "Plots", model_name)
-    makedirs(params["folder_path"], exist_ok=True)
-    fig, ax = plt.subplots(4)
+    # params = dict()
+    # params["xlabel"] = "epochs"
+    # params["folder_path"] = path.join(getcwd(), "Plots", model_name)
+    # makedirs(params["folder_path"], exist_ok=True)
+    folder_path = path.join(getcwd(), "Plots")
+    makedirs(path.join(getcwd(), "Plots", model_name), exist_ok=True)
+    file_path = path.join(folder_path, f'{model_name}.png')
+    fig, ax = plt.subplots(4, sharex=True)
     ax = ax.flat
-    causal = pd.DataFrame(logged_values['causal'])
-    anti_causal = pd.DataFrame(logged_values['anticausal'])
-    total = pd.DataFrame(logged_values['total'])
-    symmetry = pd.DataFrame(logged_values['symmetry'])
-    sns.lineplot(data=causal, ax=ax[0])
-    ax[0].set_title('causal')
-    sns.lineplot(data=anti_causal, ax=ax[1])
-    ax[1].set_title('anti causal')
-    sns.lineplot(data=total, ax=ax[2])
-    ax[2].set_title('total')
-    sns.lineplot(data=symmetry, ax=ax[3])
-    ax[3].set_title('symmetry')
-    for p in ax:
-        p.set_ylim(-0.05, 1.05)
-    plt.pause(1)
+
+    # causal = pd.DataFrame(logged_values['causal'])
+    # anti_causal = pd.DataFrame(logged_values['anticausal'])
+    # total = pd.DataFrame(logged_values['total'])
+    # symmetry = pd.DataFrame(logged_values['symmetry'])
+    # sns.lineplot(data=causal, ax=ax[0])
+    # ax[0].set_title('causal')
+    # sns.lineplot(data=anti_causal, ax=ax[1])
+    # ax[1].set_title('anti causal')
+    # sns.lineplot(data=total, ax=ax[2])
+    # ax[2].set_title('total')
+    # sns.lineplot(data=symmetry, ax=ax[3])
+    # ax[3].set_title('symmetry')
+    # for p in ax:
+    #     p.set_ylim(-0.05, 1.05)
+    # plt.pause(1)
+    plot_titles = [plot_title for plot_title in logged_values.keys()]
+    dict_hierarchy = {(plot_title, plot_type): values for plot_title, train_val_dict in logged_values.items() for
+                     plot_type, values in train_val_dict.items()}
+    df_plot = pd.DataFrame(dict_hierarchy)
+    df_plot.set_index(pd.Index(range(1, df_plot.shape[0]+1)), inplace=True)
+    for i, plot_title in enumerate(plot_titles):
+        sns.lineplot(data=df_plot[plot_title], ax=ax[i])
+        ax[i].set_title(plot_title)
+        ax[i].set_ylim(-0.05, 1.05)
+    ax[-1].set_xlabel('Epoch')
+    plt.savefig(file_path)
+    plt.close()
+    # plt.show()
+    # plt.pause(1)
 
     a = 0
     # for causal_type in error_dict.keys():
