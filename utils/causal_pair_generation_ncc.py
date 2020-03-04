@@ -119,6 +119,14 @@ class CauseEffectPairs:
         return cause_effect_pairs
 
 
+def plot_joint_distribution(df, path_and_name, save=True):
+    sns.pairplot(df, hue="kind", markers=["o", "s"], plot_kws=dict(edgecolor="b", linewidth=0.2, alpha=0.5))
+    plt.pause(1)
+    if save:
+        plt.savefig(path_and_name + f'_joint_plot.png')
+    plt.close()
+
+
 def save_causal(ce_pairs, folder_path, file_name, **kwargs):
     cause, effect = ce_pairs[0]
     data = np.array([[cause[i], effect[i]] for i in range(len(cause))])
@@ -131,16 +139,13 @@ def save_confounded(ce_pairs, folder_path, file_name, **kwargs):
     data_confounded = np.array([[effect_x[i], effect_y[i]] for i in data_range])
     data_causal_z_x = np.array([[cause_z[i], effect_x[i]] for i in data_range])
     data_causal_z_y = np.array([[cause_z[i], effect_y[i]] for i in data_range])
-    np.savez_compressed(os.path.join(folder_path, file_name), data=data_confounded)
-    np.savez_compressed(os.path.join(folder_path, file_name + '_causal_z_x'), data=data_causal_z_x)
-    np.savez_compressed(os.path.join(folder_path, file_name + '_causal_z_y'), data=data_causal_z_y)
+
+    default_name = os.path.join(folder_path, file_name)
+    np.savez_compressed(default_name, data=data_confounded)
+    np.savez_compressed(default_name + '_causal_z_x', data=data_causal_z_x)
+    np.savez_compressed(default_name + '_causal_z_y', data=data_causal_z_y)
 
     if kwargs.get('plt_joint_dist', True):
-        # sns.lineplot(data=df_plot[plot_title], ax=ax[i])
-        # g1 = (sns.jointplot(effect_x, effect_y,).set_axis_labels("effect_x", "effect_y"))
-        # g2 = (sns.jointplot(cause_z, effect_x,).set_axis_labels("cause_z", "effect_x"))
-        # g3 = (sns.jointplot(cause_z, effect_y, ).set_axis_labels("cause_z", "effect_y"))
-
         aggregated_cause_z = np.hstack(cause_z)
         aggregated_effect_x = np.hstack(effect_x)
         aggregated_effect_y = np.hstack(effect_y)
@@ -151,15 +156,8 @@ def save_confounded(ce_pairs, folder_path, file_name, **kwargs):
         aggregated = np.vstack([aggregated_causal_z_y, aggregated_confounded_x_y])
         df = pd.DataFrame(aggregated, columns=['x', 'y'])
         # df['kind'] = ['cause']*aggregated_causal_z_x.shape[0] + ['cause']*aggregated_causal_z_y.shape[0] + ['confounded']*aggregated_confounded_x_y.shape[0]
-        df['kind'] = ['cause']*aggregated_causal_z_y.shape[0] + ['confounded']*aggregated_confounded_x_y.shape[0]
-        sns.pairplot(df, hue="kind", markers=["o", "s"], plot_kws=dict(edgecolor="b", linewidth=0.2, alpha=0.5))
-        # sns.pairplot(df, hue="kind", palette="husl", markers=["o", "s"], plot_kws=dict(edgecolor="b", linewidth=0.2, alpha=0.5))
-        # grid = sns.PairGrid(data=df, hue="kind", palette="husl")
-        # grid = grid.map_upper(sns.scatterplot)
-        # grid = grid.map_lower(plt.hexbin)
-        # plt.tight_layout()
-        plt.pause(1)
-        a = 0
+        df['kind'] = ['cause'] * aggregated_causal_z_y.shape[0] + ['confounded'] * aggregated_confounded_x_y.shape[0]
+        plot_joint_distribution(df, default_name)
 
 
 def create_pairwise_dataset(args):
@@ -184,8 +182,8 @@ def create_pairwise_dataset(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-size', default=5)
-    parser.add_argument('-num_effects', default=2)
+    parser.add_argument('-size', default=50)
+    parser.add_argument('-num_effects', default=1)
     parser.add_argument('-save', default=True)
     parser.add_argument('-file_name', default='temp')
     arguments = parser.parse_args()

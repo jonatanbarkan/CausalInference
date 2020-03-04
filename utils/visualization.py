@@ -30,7 +30,7 @@ def make_plots(logged_values, model_name='ez'):
     # makedirs(params["folder_path"], exist_ok=True)
     folder_path = path.join(getcwd(), "Plots")
     makedirs(path.join(getcwd(), "Plots", model_name), exist_ok=True)
-    file_path = path.join(folder_path, f'{model_name}.png')
+    file_path = path.join(folder_path, f'{model_name}_accuracy.png')
     fig, ax = plt.subplots(4, sharex=True, dpi=300)
     ax = ax.flat
 
@@ -57,10 +57,11 @@ def make_plots(logged_values, model_name='ez'):
     for i, plot_title in enumerate(plot_titles):
         sns.lineplot(data=df_plot[plot_title], ax=ax[i])
         # ax[i].set_title(plot_title)
-        ax[i].set_title(r'0.5[1-NCC(x,y)+NCC(y,x)]' if plot_title.lower() in ['symmetry'] else r'1-acc')
+        ax[i].set_title(plot_title)
+        ax[i].set_ylabel('' if plot_title.lower() in ['symmetry'] else r'1-acc')
         ax[i].set_ylim(-0.05, 1.05)
         ax[i].set_ylabel(plot_title)
-    ax[-1].set_xlabel('Epoch')
+    ax[0].set_xlabel('Epochs')
     plt.savefig(file_path)
     plt.close()
     # plt.show()

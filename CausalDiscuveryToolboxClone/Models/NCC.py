@@ -187,15 +187,28 @@ class NCC(PairwiseModel):
         self.model = None
         self.opt = None
         self.criterion = None
+        self.anti = True
 
         self.log_dict = self.create_log_dict()
 
     @staticmethod
-    def create_log_dict():
+    def create_log_dict_old():
         return {
             'causal':
                 {'train': [], 'validation': []},
             'anticausal':
+                {'train': [], 'validation': []},
+            'total':
+                {'train': [], 'validation': []},
+            'symmetry':
+                {'train': [], 'validation': []},
+        }
+
+    def create_log_dict(self):
+        return {
+            'causal':
+                {'train': [], 'validation': []},
+            'anti-causal' if self.anti else 'confounded':
                 {'train': [], 'validation': []},
             'total':
                 {'train': [], 'validation': []},
@@ -260,7 +273,7 @@ class NCC(PairwiseModel):
                     output = []
                     labels = []
                     for batch, label in dat:
-                        symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label)
+                        symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label, self.anti)
                         batch += symmetric_batch
                         label = th.cat((label, symmetric_label))
                         self.opt.zero_grad()
@@ -402,21 +415,24 @@ class NCC(PairwiseModel):
                     te.set_postfix(Acc=1 - acc.abs().mean().item())
                     acc_list.append(1 - acc.abs().mean().item())
 
-    def compute_values(self, X, y, device, anti=True):
+    def compute_values(self, X, y, device):
         y_val = th.Tensor(y).to(device)
         batch = [th.Tensor(x).t().to(device) for x in X]
-        batch_symmetric, symmetric_label = th_enforce_symmetry(batch, y_val, anti)
+        batch_symmetric, symmetric_label = th_enforce_symmetry(batch, y_val, self.anti)
         batch = batch + batch_symmetric
         labels = th.cat((y_val, symmetric_label)).squeeze().data.cpu().numpy()
         logits = self.predict_list(batch)
         output = np.array([expit(logit.item()) for logit in logits])
-        cause_size = len(X)
         preds = np.where(output > .5, np.ones(len(output)), np.zeros(len(output)))
+        cause_mask = labels == 0
         err_total_vec = np.abs(preds - labels)
-        err_causal = err_total_vec[:cause_size].mean()
-        err_anti = err_total_vec[cause_size:].mean()
+        err_causal = err_total_vec[cause_mask].mean()
+        err_anti = err_total_vec[~cause_mask].mean()
         err_total = err_total_vec.mean()
-        symmetry_check = 0.5 * (1 - output[:cause_size] + output[cause_size:]).mean()
+        out_reg = output[:len(y)]
+        out_sym = output[len(y):]
+
+        symmetry_check = 0.5 * (1 - out_reg + out_sym).mean() if self.anti else (1 - np.abs(out_sym - out_reg)).mean()
 
         return err_total, err_causal, err_anti, symmetry_check
 

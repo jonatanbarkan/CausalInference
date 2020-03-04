@@ -4,7 +4,7 @@ from sklearn.model_selection import train_test_split
 from os import path, getcwd
 from utils.data_loader import load_correct
 
-data, labels = load_correct(path.join(getcwd(), 'Data'), 'temp_xy')
+data, labels = load_correct(path.join(getcwd(), 'Data'), 'temp_causal')
 X_tr, X_val_test, y_tr, y_val_test = train_test_split(data, labels, train_size=.8)
 X_val, X_test, y_val, y_test = train_test_split(X_val_test, y_val_test, train_size=.5)
 
