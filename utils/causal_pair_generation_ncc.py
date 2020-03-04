@@ -1,17 +1,12 @@
-# from cdt.causality.pairwise import NCC
-from CausalDiscuveryToolboxClone.Models.NCC import NCC
-import networkx as nx
-import matplotlib.pyplot as plt
-from cdt.data import load_dataset
-from sklearn.model_selection import train_test_split
-from CausalDiscuveryToolboxClone.DataGeneration import functions
-import scipy
-from scipy.interpolate import PchipInterpolator, CubicHermiteSpline, UnivariateSpline
 import numpy as np
-from scipy.special import expit
+import seaborn as sns
+from matplotlib import pyplot as plt
+from scipy.interpolate import PchipInterpolator
+import pandas as pd
 import os
 import argparse
 
+sns.set_style("white")
 np.random.seed(0)
 
 
@@ -59,8 +54,8 @@ class CauseEffectPairs:
     def __init__(self, dataset_size, num_effects=1, dist_size_vec=None, r=None, s=None, k=None):
         self.dataset_size = dataset_size
         self.num_effects = num_effects
-        # self.dist_size_vec = np.random.randint(100, 1500, dataset_size) if dist_size_vec is None else dist_size_vec
-        self.dist_size_vec = 200 * np.ones(dataset_size, dtype=np.int32)
+        self.dist_size_vec = np.random.randint(300, 1500, dataset_size) if dist_size_vec is None else dist_size_vec
+        # self.dist_size_vec = 200 * np.ones(dataset_size, dtype=np.int32)
         self.r = 5 * np.random.random(dataset_size) if r is None else r
         self.s = 5 * np.random.random(dataset_size) if s is None else s
         self.k = np.random.randint(1, 6, dataset_size) if k is None else k
@@ -90,12 +85,12 @@ class CauseEffectPairs:
             cause.append(cause_val)
         return cause
 
-    def create_effect(self, cause):
+    def create_effect(self, cause, noise_std_max=5):
         n = self.dataset_size
         m = self.dist_size_vec
         supports = [[cause_val.min() - cause_val.std(), cause_val.max() + cause_val.std()] for cause_val in cause]
         d = np.random.randint(4, 6, n)
-        v = 5 * np.random.random(n)
+        v = noise_std_max * np.random.random(n)
         effect = []
         for i in range(n):
             cause_i_knots = np.linspace(*supports[i], d[i])
@@ -124,27 +119,47 @@ class CauseEffectPairs:
         return cause_effect_pairs
 
 
-def save_causal(ce_pairs, folder_path, file_name, *args):
+def save_causal(ce_pairs, folder_path, file_name, **kwargs):
     cause, effect = ce_pairs[0]
     data = np.array([[cause[i], effect[i]] for i in range(len(cause))])
-    # labels = np.zeros(data.shape[0])
     np.savez_compressed(os.path.join(folder_path, file_name), data=data)
 
 
-def save_confounded(ce_pairs, folder_path, file_name, *args):
-    n, m, r, s, k = args
-    # effect_x, effect_y = [ce_pair[1] for ce_pair in ce_pairs]
-    # z_cause, effect_x, effect_y = [ce_pair[1] for ce_pair in ce_pairs]
+def save_confounded(ce_pairs, folder_path, file_name, **kwargs):
     cause_z, effect_x, effect_y = ce_pairs[0][0], ce_pairs[0][1], ce_pairs[1][1]
-    # data_confounded = np.array(list(map(lambda i: np.hstack((effect_x[i], effect_y[i])), range(len(effect_x)))))
-    data_confounded = np.array([[cause_z[i], effect_x[i], effect_y[i]] for i in range(len(effect_x))])
-    # labels_confounded = np.zeros(len(effect_x))
-    # cause_effect_pair = CauseEffectPairs(n, num_effects=1, dist_size_vec=m, r=r, s=s, k=k)
-    # effect = cause_effect_pair.create_effect(effect_x)
-    # cause, effect = cause_effect_pair.create_cause_effect_pairs()[0]
-    # data_causal = np.array([[cause[i], effect[i]] for i in range(len(cause))])
-    # labels_causal = np.ones(data_causal.shape[0])
+    data_range = range(len(effect_x))
+    data_confounded = np.array([[effect_x[i], effect_y[i]] for i in data_range])
+    data_causal_z_x = np.array([[cause_z[i], effect_x[i]] for i in data_range])
+    data_causal_z_y = np.array([[cause_z[i], effect_y[i]] for i in data_range])
     np.savez_compressed(os.path.join(folder_path, file_name), data=data_confounded)
+    np.savez_compressed(os.path.join(folder_path, file_name + '_causal_z_x'), data=data_causal_z_x)
+    np.savez_compressed(os.path.join(folder_path, file_name + '_causal_z_y'), data=data_causal_z_y)
+
+    if kwargs.get('plt_joint_dist', True):
+        # sns.lineplot(data=df_plot[plot_title], ax=ax[i])
+        # g1 = (sns.jointplot(effect_x, effect_y,).set_axis_labels("effect_x", "effect_y"))
+        # g2 = (sns.jointplot(cause_z, effect_x,).set_axis_labels("cause_z", "effect_x"))
+        # g3 = (sns.jointplot(cause_z, effect_y, ).set_axis_labels("cause_z", "effect_y"))
+
+        aggregated_cause_z = np.hstack(cause_z)
+        aggregated_effect_x = np.hstack(effect_x)
+        aggregated_effect_y = np.hstack(effect_y)
+        aggregated_causal_z_x = np.hstack([aggregated_cause_z.reshape(-1, 1), aggregated_effect_x.reshape(-1, 1)])
+        aggregated_causal_z_y = np.hstack((aggregated_cause_z.reshape(-1, 1), aggregated_effect_y.reshape(-1, 1)))
+        aggregated_confounded_x_y = np.hstack((aggregated_effect_x.reshape(-1, 1), aggregated_effect_y.reshape(-1, 1)))
+        # aggregated = np.vstack([aggregated_causal_z_x, aggregated_causal_z_y, aggregated_confounded_x_y])
+        aggregated = np.vstack([aggregated_causal_z_y, aggregated_confounded_x_y])
+        df = pd.DataFrame(aggregated, columns=['x', 'y'])
+        # df['kind'] = ['cause']*aggregated_causal_z_x.shape[0] + ['cause']*aggregated_causal_z_y.shape[0] + ['confounded']*aggregated_confounded_x_y.shape[0]
+        df['kind'] = ['cause']*aggregated_causal_z_y.shape[0] + ['confounded']*aggregated_confounded_x_y.shape[0]
+        sns.pairplot(df, hue="kind", markers=["o", "s"], plot_kws=dict(edgecolor="b", linewidth=0.2, alpha=0.5))
+        # sns.pairplot(df, hue="kind", palette="husl", markers=["o", "s"], plot_kws=dict(edgecolor="b", linewidth=0.2, alpha=0.5))
+        # grid = sns.PairGrid(data=df, hue="kind", palette="husl")
+        # grid = grid.map_upper(sns.scatterplot)
+        # grid = grid.map_lower(plt.hexbin)
+        # plt.tight_layout()
+        plt.pause(1)
+        a = 0
 
 
 def create_pairwise_dataset(args):
@@ -164,13 +179,13 @@ def create_pairwise_dataset(args):
         os.makedirs(data_folder_path, exist_ok=True)
         if num_effects in save_dict:
             save_data = save_dict[num_effects]
-            save_data(ce_pairs, data_folder_path, file_name, n, m, r, s, k)
+            save_data(ce_pairs, data_folder_path, file_name)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-size', default=500)
-    parser.add_argument('-num_effects', default=1)
+    parser.add_argument('-size', default=5)
+    parser.add_argument('-num_effects', default=2)
     parser.add_argument('-save', default=True)
     parser.add_argument('-file_name', default='temp')
     arguments = parser.parse_args()
