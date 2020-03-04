@@ -49,7 +49,7 @@ def make_plots(logged_values, model_name='ez'):
     # for p in ax:
     #     p.set_ylim(-0.05, 1.05)
     # plt.pause(1)
-    plot_titles = [plot_title for plot_title in logged_values.keys()]
+    plot_titles = list(logged_values.keys())
     dict_hierarchy = {(plot_title, plot_type): values for plot_title, train_val_dict in logged_values.items() for
                      plot_type, values in train_val_dict.items()}
     df_plot = pd.DataFrame(dict_hierarchy)

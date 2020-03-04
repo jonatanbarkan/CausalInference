@@ -116,31 +116,6 @@ class NCC_model(nn.Module):
         """Init the NCC structure with the number of hidden units.
         """
         super(NCC_model, self).__init__()
-
-        # embedding_1 = nn.Conv1d(2, n_hiddens, kernel_size, )
-        # embedding_batch_norm_1 = nn.BatchNorm1d(n_hiddens, affine=False, )
-        # embedding_activation_1 = nn.ReLU()
-        #
-        # embedding_2 = nn.Conv1d(n_hiddens, n_hiddens, kernel_size, )
-        # embedding_batch_norm_2 = nn.BatchNorm1d(n_hiddens, affine=False, )
-        # embedding_activation_2 = nn.ReLU()
-        #
-        # self.conv = nn.Sequential(embedding_1,
-        #                              embedding_batch_norm_1,
-        #                              embedding_activation_1,
-        #                              embedding_2,
-        #                              embedding_batch_norm_2,
-        #                              embedding_activation_2)
-        # # self.batch_norm = nn.BatchNorm1d(n_hiddens, affine=False)
-        # dense_1 = nn.Linear(n_hiddens, n_hiddens)
-        # dense_activation_1 = nn.ReLU()
-        # drop_dense_1 = nn.Dropout(p)
-        # dense_2 = nn.Linear(n_hiddens, 1)
-        # self.dense = nn.Sequential(dense_1,
-        #                               dense_activation_1,
-        #                               drop_dense_1,
-        #                               dense_2
-        #                               )
         self.conv = th.nn.Sequential(th.nn.Conv1d(2, n_hiddens, kernel_size),
                                      th.nn.BatchNorm1d(n_hiddens, affine=False),
                                      th.nn.ReLU(),
@@ -161,13 +136,13 @@ class NCC_model(nn.Module):
     @staticmethod
     def init_weights(m):
         if isinstance(m, nn.Linear):
-            nn.init.xavier_uniform(m.weight)
-            # m.bias.data.fill_(0.01)
+            nn.init.kaiming_normal_(m.weight)
+            nn.init.normal_(m.bias, 0, 0.0001)
+            # m.bias.data.fill_(0.0001)
         elif isinstance(m, nn.Conv1d):
             nn.init.kaiming_normal_(m.weight)
-            # m.bias.data.fill_(0.01)
-
-
+            nn.init.normal_(m.bias, 0, 0.0001)
+            # m.bias.data.fill_(0.0001)
 
     def get_architecture_dict(self):
         architecture_dict = {'encoder': self.conv, 'classifier': self.dense}
