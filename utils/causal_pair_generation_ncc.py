@@ -5,6 +5,7 @@ from scipy.interpolate import PchipInterpolator
 import pandas as pd
 import os
 import argparse
+from os import path, makedirs, getcwd
 
 sns.set_style("white")
 np.random.seed(0)
@@ -51,10 +52,10 @@ def generate_noiseless_effect(f, cause):
 
 
 class CauseEffectPairs:
-    def __init__(self, dataset_size, num_effects=1, dist_size_vec=None, r=None, s=None, k=None):
+    def __init__(self, dataset_size, num_effects=1, dist_size_vec=None, r=None, s=None, k=None, m_i_min=100, m_i_max=300):
         self.dataset_size = dataset_size
         self.num_effects = num_effects
-        self.dist_size_vec = np.random.randint(300, 1500, dataset_size) if dist_size_vec is None else dist_size_vec
+        self.dist_size_vec = np.random.randint(m_i_min, m_i_max, dataset_size) if dist_size_vec is None else dist_size_vec
         # self.dist_size_vec = 200 * np.ones(dataset_size, dtype=np.int32)
         self.r = 5 * np.random.random(dataset_size) if r is None else r
         self.s = 5 * np.random.random(dataset_size) if s is None else s
@@ -119,11 +120,11 @@ class CauseEffectPairs:
         return cause_effect_pairs
 
 
-def plot_joint_distribution(df, path_and_name, save=True):
+def plot_joint_distribution(df, folder_path, name, save=True):
     sns.pairplot(df, hue="kind", markers=["o", "s"], plot_kws=dict(edgecolor="b", linewidth=0.2, alpha=0.5))
-    plt.pause(1)
+    # plt.pause(1)
     if save:
-        plt.savefig(path_and_name + f'_joint_plot.png')
+        plt.savefig(path.join(folder_path, name + '_data_joint_plot.png'))
     plt.close()
 
 
@@ -140,10 +141,9 @@ def save_confounded(ce_pairs, folder_path, file_name, **kwargs):
     data_causal_z_x = np.array([[cause_z[i], effect_x[i]] for i in data_range])
     data_causal_z_y = np.array([[cause_z[i], effect_y[i]] for i in data_range])
 
-    default_name = os.path.join(folder_path, file_name)
-    np.savez_compressed(default_name, data=data_confounded)
-    np.savez_compressed(default_name + '_causal_z_x', data=data_causal_z_x)
-    np.savez_compressed(default_name + '_causal_z_y', data=data_causal_z_y)
+    np.savez_compressed(os.path.join(folder_path, file_name), data=data_confounded)
+    np.savez_compressed(os.path.join(folder_path, file_name + '_causal_z_x'), data=data_causal_z_x)
+    np.savez_compressed(os.path.join(folder_path, file_name + '_causal_z_y'), data=data_causal_z_y)
 
     if kwargs.get('plt_joint_dist', True):
         aggregated_cause_z = np.hstack(cause_z)
@@ -157,7 +157,7 @@ def save_confounded(ce_pairs, folder_path, file_name, **kwargs):
         df = pd.DataFrame(aggregated, columns=['x', 'y'])
         # df['kind'] = ['cause']*aggregated_causal_z_x.shape[0] + ['cause']*aggregated_causal_z_y.shape[0] + ['confounded']*aggregated_confounded_x_y.shape[0]
         df['kind'] = ['cause'] * aggregated_causal_z_y.shape[0] + ['confounded'] * aggregated_confounded_x_y.shape[0]
-        plot_joint_distribution(df, default_name)
+        plot_joint_distribution(df, file_name)
 
 
 def create_pairwise_dataset(args):
@@ -166,7 +166,7 @@ def create_pairwise_dataset(args):
     assert num_effects in [1, 2]
     save = args.save
     file_name = args.file_name + '_{}'.format('confounded' if num_effects == 2 else 'causal')
-    CE_pairs = CauseEffectPairs(n, num_effects)
+    CE_pairs = CauseEffectPairs(n, num_effects, m_i_min=args.m_i_min, m_i_max=args.m_i_max, )
     ce_pairs = CE_pairs.create_cause_effect_pairs()
     r, s, k = CE_pairs.get_r(), CE_pairs.get_s(), CE_pairs.get_k()
     m = CE_pairs.get_dist_size_vec()
@@ -182,10 +182,12 @@ def create_pairwise_dataset(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-size', default=50)
-    parser.add_argument('-num_effects', default=1)
+    parser.add_argument('-size', default=10000)
+    parser.add_argument('-num_effects', default=2)
     parser.add_argument('-save', default=True)
-    parser.add_argument('-file_name', default='temp')
+    parser.add_argument('-file_name', default='final_data_confounded_1')
+    parser.add_argument('-m_i_min', default=300)
+    parser.add_argument('-m_i_max', default=1500)
     arguments = parser.parse_args()
     create_pairwise_dataset(arguments)
     # data, labels = load_dataset('tuebingen')

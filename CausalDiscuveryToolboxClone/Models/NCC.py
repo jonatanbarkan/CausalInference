@@ -35,13 +35,13 @@ import pandas as pd
 # from cdt.causality.pairwise.model import PairwiseModel
 from CausalDiscuveryToolboxClone.Models.PairwiseModel import PairwiseModel
 from tqdm import trange
-from os import path, makedirs
 from torch.utils import data
 import torch.nn as nn
 from cdt.utils.Settings import SETTINGS
 from utils.symmetry_enforcer import th_enforce_symmetry
 from itertools import chain
 from scipy.special import expit
+import os
 
 
 class Dataset(data.Dataset):
@@ -112,25 +112,46 @@ class NCC_model(nn.Module):
         kernel_size (int): Kernel size of the convolutions
     """
 
-    def __init__(self, n_hiddens=100, kernel_size=3, p=0.25):
+    def __init__(self, n_hiddens=100, kernel_size=3, p=0.25, additional_num_hidden_layers=1):
         """Init the NCC structure with the number of hidden units.
         """
         super(NCC_model, self).__init__()
-        self.conv = th.nn.Sequential(th.nn.Conv1d(2, n_hiddens, kernel_size),
-                                     th.nn.BatchNorm1d(n_hiddens, affine=False),
-                                     th.nn.ReLU(),
-                                     th.nn.Conv1d(n_hiddens, n_hiddens,
-                                                  kernel_size),
-                                     th.nn.BatchNorm1d(n_hiddens, affine=False),
-                                     th.nn.ReLU())
+        conv_seq = [
+            th.nn.Conv1d(2, n_hiddens, kernel_size),
+            th.nn.BatchNorm1d(n_hiddens, affine=False),
+            th.nn.ReLU(),
+            th.nn.Conv1d(n_hiddens, n_hiddens, kernel_size),
+            th.nn.BatchNorm1d(n_hiddens, affine=False),
+            th.nn.ReLU()
+        ]
+
+        for i in range(additional_num_hidden_layers):
+            conv_seq += [
+                th.nn.Conv1d(n_hiddens, n_hiddens, kernel_size),
+                th.nn.BatchNorm1d(n_hiddens, affine=False),
+                th.nn.ReLU()
+            ]
+
+        self.conv = th.nn.Sequential(*conv_seq)
         self.conv.apply(self.init_weights)
-        # self.batch_norm = th.nn.BatchNorm1d(n_hiddens, affine=False)
-        self.dense = th.nn.Sequential(th.nn.Linear(n_hiddens, n_hiddens),
-                                      # th.nn.BatchNorm1d(n_hiddens, affine=False),
-                                      th.nn.ReLU(),
-                                      th.nn.Dropout(p),
-                                      th.nn.Linear(n_hiddens, 1)
-                                      )
+
+        dense_seq = []
+
+        for i in range(additional_num_hidden_layers):
+            dense_seq += [
+                th.nn.Linear(n_hiddens, n_hiddens),
+                th.nn.ReLU(),
+                th.nn.Dropout(p),
+            ]
+
+        dense_seq += [
+            th.nn.Linear(n_hiddens, n_hiddens),
+            th.nn.ReLU(),
+            th.nn.Dropout(p),
+            th.nn.Linear(n_hiddens, 1)
+        ]
+
+        self.dense = th.nn.Sequential(*dense_seq)
         self.dense.apply(self.init_weights)
 
     @staticmethod
@@ -204,11 +225,12 @@ class NCC(PairwiseModel):
                 {'train': [], 'validation': []},
         }
 
-    def create_log_dict(self):
+    @staticmethod
+    def create_log_dict():
         return {
             'causal':
                 {'train': [], 'validation': []},
-            'anti-causal' if self.anti else 'confounded':
+            'noncausal':
                 {'train': [], 'validation': []},
             'total':
                 {'train': [], 'validation': []},
@@ -216,8 +238,9 @@ class NCC(PairwiseModel):
                 {'train': [], 'validation': []},
         }
 
-    def get_model(self):
-        self.model = self.model if self.model is not None else NCC_model()
+    def get_model(self, n_hiddens, kernel_size, dropout_rate, additional_num_hidden_layers):
+        self.model = self.model if self.model is not None else NCC_model(n_hiddens, kernel_size, dropout_rate,
+                                                                         additional_num_hidden_layers)
         return self.model
 
     def freeze_weights(self, part=None):
@@ -229,24 +252,23 @@ class NCC(PairwiseModel):
         # for name, param in model.named_parameters():
         #     print(f"{name}'s layer weights:\n{param.data}")
 
-    def save_model(self, foler_path, file_path="model.pth"):
+    def save_model(self, folder_path, file_path="model.pth"):
         model = self.model
         if model is not None:
-            makedirs(foler_path, exist_ok=True)
-            full_path = path.join(foler_path, file_path)
+            full_path = os.path.join(folder_path, file_path)
             th.save(model.state_dict(), full_path)
         else:
             print('cannot save (no model)')
 
     def load_model(self, folder_path, file_path):
-        full_path = path.join(folder_path, file_path)
-        if path.exists(full_path):
+        full_path = os.path.join(folder_path, file_path)
+        if os.path.exists(full_path):
             self.model = NCC_model()
             self.model.load_state_dict(th.load(full_path))
         else:
             print(f"path {full_path} doesn't exist")
 
-    def create_loss(self, learning_rate, optimizer):
+    def create_loss(self, learning_rate, optimizer, **kwargs):
         if optimizer.lower() == 'rms':
             self.opt = th.optim.RMSprop(self.model.parameters(), lr=learning_rate)
         elif optimizer.lower() == 'adam':
@@ -255,45 +277,45 @@ class NCC(PairwiseModel):
             raise NotImplemented
         self.criterion = nn.BCEWithLogitsLoss()
 
-    def fit_clean(self, train_data, train_labels, validation_data, validation_labels, epochs=30, batch_size=16,
-                  verbose=None, device='cpu'):
-        verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
-        model = self.model.to(device)
-        y = th.Tensor(train_labels)
-        y = y.to(device)
-        dataset = [th.Tensor(x).t().to(device) for x in train_data]
-        dat = Dataset(dataset, y, device, batch_size)
-        data_per_epoch = (len(dataset) // batch_size)
-
-        with trange(epochs, desc="Epochs", disable=not verbose) as te:
-            for _ in te:
-                self.model.train()
-                with trange(data_per_epoch, desc="Batches of 2*{}".format(batch_size),
-                            disable=not (verbose and batch_size == len(dataset))) as t:
-                    output = []
-                    labels = []
-                    for batch, label in dat:
-                        symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label, self.anti)
-                        batch += symmetric_batch
-                        label = th.cat((label, symmetric_label))
-                        self.opt.zero_grad()
-                        out = th.stack([model(m.t().unsqueeze(0)) for m in batch], 0).squeeze()
-                        loss = self.criterion(out, label)
-                        loss.backward()
-                        output.append(expit(out.data.cpu()))
-                        t.set_postfix(loss=loss.item())
-                        self.opt.step()
-                        labels.append(label.data.cpu())
-                    length = th.cat(output, 0).data.cpu().numpy().size
-                    acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones((length, 1)).data.cpu(),
-                                   th.zeros((length, 1)).data.cpu()) - \
-                          th.cat(labels, 0).data.cpu()
-                    Acc = 1 - acc.abs().mean().item()
-                    te.set_postfix(Acc=Acc)
-
-                self.model.eval()
-                self.log_values(*self.compute_values(train_data, train_labels, device), 'train')
-                self.log_values(*self.compute_values(validation_data, validation_labels, device), 'validation')
+    # def fit_clean(self, train_data, train_labels, validation_data, validation_labels, epochs=30, batch_size=16,
+    #               verbose=None, device='cpu'):
+    #     verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
+    #     model = self.model.to(device)
+    #     y = th.Tensor(train_labels)
+    #     y = y.to(device)
+    #     dataset = [th.Tensor(x).t().to(device) for x in train_data]
+    #     dat = Dataset(dataset, y, device, batch_size)
+    #     data_per_epoch = (len(dataset) // batch_size)
+    #
+    #     with trange(epochs, desc="Epochs", disable=not verbose) as te:
+    #         for _ in te:
+    #             self.model.train()
+    #             with trange(data_per_epoch, desc="Batches of 2*{}".format(batch_size),
+    #                         disable=not (verbose and batch_size == len(dataset))) as t:
+    #                 output = []
+    #                 labels = []
+    #                 for batch, label in dat:
+    #                     symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label, self.anti)
+    #                     batch += symmetric_batch
+    #                     label = th.cat((label, symmetric_label))
+    #                     self.opt.zero_grad()
+    #                     out = th.stack([model(m.t().unsqueeze(0)) for m in batch], 0).squeeze()
+    #                     loss = self.criterion(out, label)
+    #                     loss.backward()
+    #                     output.append(expit(out.data.cpu()))
+    #                     t.set_postfix(loss=loss.item())
+    #                     self.opt.step()
+    #                     labels.append(label.data.cpu())
+    #                 length = th.cat(output, 0).data.cpu().numpy().size
+    #                 acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones((length, 1)).data.cpu(),
+    #                                th.zeros((length, 1)).data.cpu()) - \
+    #                       th.cat(labels, 0).data.cpu()
+    #                 Acc = 1 - acc.abs().mean().item()
+    #                 te.set_postfix(Acc=Acc)
+    #
+    #             self.model.eval()
+    #             self.log_values(*self.compute_values(train_data, train_labels, device), 'train')
+    #             self.log_values(*self.compute_values(validation_data, validation_labels, device), 'validation')
 
     def _fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True):
         """Fit the NCC model.
@@ -354,66 +376,66 @@ class NCC(PairwiseModel):
                     te.set_postfix(Acc=Acc)
                     train_accuracy.append(Acc)
 
-    def fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True,
-            **kwargs):
-        """Fit the NCC model.
-
-        Args:
-            x_tr (pd.DataFrame): CEPC format dataframe containing the pairs
-            y_tr (pd.DataFrame or np.ndarray): labels associated to the pairs
-            epochs (int): number of train epochs
-            batch_size (int): size of batch
-            learning_rate (float): learning rate of Adam
-            verbose (bool): verbosity (defaults to ``cdt.SETTINGS.verbose``)
-            device (str): cuda or cpu device (defaults to ``cdt.SETTINGS.default_device``)
-        """
-
-        if half:
-            batch_size //= 2
-        if batch_size > len(x_tr):
-            batch_size = len(x_tr)
-        verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
-        model = self.get_model()
-        opt = th.optim.Adam(model.parameters(), lr=learning_rate)
-        criterion = nn.BCEWithLogitsLoss()
-        if kwargs.get('us'):
-            y = th.Tensor(y_tr)
-        else:
-            y = y_tr.values if isinstance(y_tr, pd.DataFrame) else y_tr
-            y = th.Tensor(y) / 2 + .5
-        model = model.to(device)
-        y = y.to(device)
-        if kwargs.get('us'):
-            dataset = [th.Tensor(x).t().to(device) for x in x_tr]
-        else:
-            dataset = [th.Tensor(np.vstack([row['A'], row['B']])).t().to(device) for (idx, row) in x_tr.iterrows()]
-        acc_list = [0]
-
-        da = Dataset(dataset, y, device, batch_size)
-        data_per_epoch = (len(dataset) // batch_size)
-        with trange(epochs, desc="Epochs", disable=not verbose) as te:
-            for epoch in te:
-                with trange(data_per_epoch, desc="Batches of 2*{}".format(batch_size),
-                            disable=not (verbose and batch_size == len(dataset))) as t:
-                    output = []
-                    labels = []
-                    for batch, label in da:
-                        # for (batch, label), i in zip(da, t):
-                        symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label)
-                        batch += symmetric_batch
-                        label = th.cat((label, symmetric_label))
-                        opt.zero_grad()
-                        out = th.stack([model(m.t().unsqueeze(0)) for m in batch], 0).squeeze(2)
-                        loss = criterion(out, label)
-                        loss.backward()
-                        output.append(out)
-                        t.set_postfix(loss=loss.item())
-                        opt.step()
-                        labels.append(label)
-                    acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones(len(output)), th.zeros(len(output))) - \
-                          th.cat(labels, 0).data.cpu()
-                    te.set_postfix(Acc=1 - acc.abs().mean().item())
-                    acc_list.append(1 - acc.abs().mean().item())
+    # def fit(self, x_tr, y_tr, epochs=50, batch_size=32, learning_rate=0.01, verbose=None, device='cpu', half=True,
+    #         **kwargs):
+    #     """Fit the NCC model.
+    #
+    #     Args:
+    #         x_tr (pd.DataFrame): CEPC format dataframe containing the pairs
+    #         y_tr (pd.DataFrame or np.ndarray): labels associated to the pairs
+    #         epochs (int): number of train epochs
+    #         batch_size (int): size of batch
+    #         learning_rate (float): learning rate of Adam
+    #         verbose (bool): verbosity (defaults to ``cdt.SETTINGS.verbose``)
+    #         device (str): cuda or cpu device (defaults to ``cdt.SETTINGS.default_device``)
+    #     """
+    #
+    #     if half:
+    #         batch_size //= 2
+    #     if batch_size > len(x_tr):
+    #         batch_size = len(x_tr)
+    #     verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
+    #     model = self.get_model()
+    #     opt = th.optim.Adam(model.parameters(), lr=learning_rate)
+    #     criterion = nn.BCEWithLogitsLoss()
+    #     if kwargs.get('us'):
+    #         y = th.Tensor(y_tr)
+    #     else:
+    #         y = y_tr.values if isinstance(y_tr, pd.DataFrame) else y_tr
+    #         y = th.Tensor(y) / 2 + .5
+    #     model = model.to(device)
+    #     y = y.to(device)
+    #     if kwargs.get('us'):
+    #         dataset = [th.Tensor(x).t().to(device) for x in x_tr]
+    #     else:
+    #         dataset = [th.Tensor(np.vstack([row['A'], row['B']])).t().to(device) for (idx, row) in x_tr.iterrows()]
+    #     acc_list = [0]
+    #
+    #     da = Dataset(dataset, y, device, batch_size)
+    #     data_per_epoch = (len(dataset) // batch_size)
+    #     with trange(epochs, desc="Epochs", disable=not verbose) as te:
+    #         for epoch in te:
+    #             with trange(data_per_epoch, desc="Batches of 2*{}".format(batch_size),
+    #                         disable=not (verbose and batch_size == len(dataset))) as t:
+    #                 output = []
+    #                 labels = []
+    #                 for batch, label in da:
+    #                     # for (batch, label), i in zip(da, t):
+    #                     symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label)
+    #                     batch += symmetric_batch
+    #                     label = th.cat((label, symmetric_label))
+    #                     opt.zero_grad()
+    #                     out = th.stack([model(m.t().unsqueeze(0)) for m in batch], 0).squeeze(2)
+    #                     loss = criterion(out, label)
+    #                     loss.backward()
+    #                     output.append(out)
+    #                     t.set_postfix(loss=loss.item())
+    #                     opt.step()
+    #                     labels.append(label)
+    #                 acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones(len(output)), th.zeros(len(output))) - \
+    #                       th.cat(labels, 0).data.cpu()
+    #                 te.set_postfix(Acc=1 - acc.abs().mean().item())
+    #                 acc_list.append(1 - acc.abs().mean().item())
 
     def compute_values(self, X, y, device):
         y_val = th.Tensor(y).to(device)
@@ -427,44 +449,82 @@ class NCC(PairwiseModel):
         cause_mask = labels == 0
         err_total_vec = np.abs(preds - labels)
         err_causal = err_total_vec[cause_mask].mean()
-        err_anti = err_total_vec[~cause_mask].mean()
+        err_non_causal = err_total_vec[~cause_mask].mean()
         err_total = err_total_vec.mean()
         out_reg = output[:len(y)]
         out_sym = output[len(y):]
-
         symmetry_check = 0.5 * (1 - out_reg + out_sym).mean() if self.anti else (1 - np.abs(out_sym - out_reg)).mean()
-
-        return err_total, err_causal, err_anti, symmetry_check
+        return err_total, err_causal, err_non_causal, symmetry_check
 
     def log_values(self, err_total, err_causal, err_anti, symmetry_check, dataset_type):
         assert dataset_type in ['train', 'validation']
         self.log_dict['causal'][dataset_type].append(err_causal)
-        self.log_dict['anticausal'][dataset_type].append(err_anti)
+        self.log_dict['noncausal'][dataset_type].append(err_anti)
         self.log_dict['total'][dataset_type].append(err_total)
         self.log_dict['symmetry'][dataset_type].append(symmetry_check)
 
-    def train_and_validate(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32,
-                           learning_rate=0.01, verbose=None, device='cpu', half=True):
-        error_dict = {'causal': {'train': [], 'validation': []},
-                      'anticausal': {'train': [], 'validation': []},
-                      'total': {'train': [], 'validation': []}}
-        symmetry_check_dict = {'train': [], 'validation': []}
-        self.model = self.get_model()
-        for epoch in range(epochs):
-            # self.model.train()
-            self._fit(X_tr, y_tr, epochs=1, batch_size=batch_size, learning_rate=learning_rate, device=device,
-                      half=half, verbose=verbose)
-            self.model.eval()
-            err_total, err_causal, err_anti, symmetry_check = self.compute_values(X_tr, y_tr, device)
-            self.log_values(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check, 'train')
-            err_total, err_causal, err_anti, symmetry_check = self.compute_values(X_val, y_val, device)
-            self.log_values(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check,
-                            'validation')
+    # def train_and_validate(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32,
+    #                        learning_rate=0.01, verbose=None, device='cpu', half=True):
+    #     error_dict = {'causal': {'train': [], 'validation': []},
+    #                   'anticausal': {'train': [], 'validation': []},
+    #                   'total': {'train': [], 'validation': []}}
+    #     symmetry_check_dict = {'train': [], 'validation': []}
+    #     self.model = self.get_model()
+    #     for epoch in range(epochs):
+    #         # self.model.train()
+    #         self._fit(X_tr, y_tr, epochs=1, batch_size=batch_size, learning_rate=learning_rate, device=device,
+    #                   half=half, verbose=verbose)
+    #         self.model.eval()
+    #         err_total, err_causal, err_anti, symmetry_check = self.compute_values(X_tr, y_tr, device)
+    #         self.log_values(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check, 'train')
+    #         err_total, err_causal, err_anti, symmetry_check = self.compute_values(X_val, y_val, device)
+    #         self.log_values(error_dict, symmetry_check_dict, err_total, err_causal, err_anti, symmetry_check,
+    #                         'validation')
+    #
+    #     return error_dict, symmetry_check_dict
 
-        return error_dict, symmetry_check_dict
-
-    def train(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32, verbose=None, device='cpu', ):
+    def train_old(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32, verbose=None, device='cpu', **kwargs):
         self.fit_clean(X_tr, y_tr, X_val, y_val, epochs=epochs, batch_size=batch_size, device=device, verbose=verbose)
+        return self.log_dict
+
+    def train(self, X_tr, y_tr, X_val, y_val, epochs=50, batch_size=32, verbose=None, device='cpu', **kwargs):
+        verbose, device = SETTINGS.get_default(('verbose', verbose), ('device', device))
+        model = self.model.to(device)
+        y = th.Tensor(y_tr)
+        y = y.to(device)
+        dataset = [th.Tensor(x).t().to(device) for x in X_tr]
+        dat = Dataset(dataset, y, device, batch_size)
+        data_per_epoch = (len(dataset) // batch_size)
+
+        with trange(epochs, desc="Epochs", disable=not verbose) as te:
+            for _ in te:
+                self.model.train()
+                with trange(data_per_epoch, desc="Batches of 2*{}".format(batch_size),
+                            disable=not (verbose and batch_size == len(dataset))) as t:
+                    output = []
+                    labels = []
+                    for batch, label in dat:
+                        symmetric_batch, symmetric_label = th_enforce_symmetry(batch, label, self.anti)
+                        batch += symmetric_batch
+                        label = th.cat((label, symmetric_label))
+                        self.opt.zero_grad()
+                        out = th.stack([model(m.t().unsqueeze(0)) for m in batch], 0).squeeze()
+                        loss = self.criterion(out, label)
+                        loss.backward()
+                        output.append(expit(out.data.cpu()))
+                        t.set_postfix(loss=loss.item())
+                        self.opt.step()
+                        labels.append(label.data.cpu())
+                    length = th.cat(output, 0).data.cpu().numpy().size
+                    acc = th.where(th.cat(output, 0).data.cpu() > .5, th.ones((length, 1)).data.cpu(),
+                                   th.zeros((length, 1)).data.cpu()) - \
+                          th.cat(labels, 0).data.cpu()
+                    Acc = 1 - acc.abs().mean().item()
+                    te.set_postfix(Acc=Acc)
+
+                self.model.eval()
+                self.log_values(*self.compute_values(X_tr, y_tr, device), 'train')
+                self.log_values(*self.compute_values(X_val, y_val, device), 'validation')
         return self.log_dict
 
     def _predict_proba(self, X):
