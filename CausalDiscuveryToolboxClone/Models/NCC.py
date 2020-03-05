@@ -496,6 +496,10 @@ class NCC(PairwiseModel):
         dat = Dataset(dataset, y, device, batch_size)
         data_per_epoch = (len(dataset) // batch_size)
 
+        self.model.eval()
+        self.log_values(*self.compute_values(X_tr, y_tr, device), 'train')
+        self.log_values(*self.compute_values(X_val, y_val, device), 'validation')
+
         with trange(epochs, desc="Epochs", disable=not verbose) as te:
             for _ in te:
                 self.model.train()

@@ -11,7 +11,7 @@ from datetime import datetime
 from CausalDiscuveryToolboxClone.Models.NCC import NCC
 from utils.causal_pair_generation_ncc import plot_joint_distribution
 from utils.data_loader import load_data, create_labels  # load_correct,
-from utils.visualization import make_plots
+from utils.visualization import make_plots, make_separate_plots
 from itertools import product
 
 
@@ -74,13 +74,14 @@ def save_model(obj, folder_path: str, name: str):
 
 def run_model(FLAGS, **kwargs):
     # create save path
-    plots_path = os.path.join(os.getcwd(), "Results")
+    plots_path = os.path.join(os.getcwd(), "Results", FLAGS.save_model_name)
     model_path = os.path.join(os.getcwd(), "Models")
     jsons_path = os.path.join(os.getcwd(), "Jsons")
     os.makedirs(plots_path, exist_ok=True)
     os.makedirs(model_path, exist_ok=True)
     os.makedirs(jsons_path, exist_ok=True)
 
+    # TODO: moved to split script - replace with load of train and validation sets
     # load data
     data_folder_path = os.path.join(os.getcwd(), 'Data')
     data, labels = create_data(data_folder_path, FLAGS.data_file_1, 0)
@@ -112,7 +113,8 @@ def run_model(FLAGS, **kwargs):
     network.create_loss(learning_rate=FLAGS.learning_rate, optimizer=FLAGS.optimizer)
     logged_values = network.train(X_tr, y_tr, X_val, y_val, epochs=FLAGS.epochs, batch_size=FLAGS.batch_size, )
 
-    make_plots(logged_values, plot_path=plots_path, model_name=FLAGS.save_model_name)
+    # make_plots(logged_values, plot_path=plots_path, model_name=FLAGS.save_model_name)
+    make_separate_plots(logged_values, plot_path=plots_path, model_name=FLAGS.save_model_name)
     save_model(network, folder_path=model_path, name=FLAGS.save_model_name)
     save_json(jsons_path, FLAGS.save_model_name, **vars(FLAGS))
 
@@ -120,10 +122,12 @@ def run_model(FLAGS, **kwargs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-num_effects', default=1, choices={1, 2})
-    parser.add_argument('-data_file_1', default='final_data_causal_1_causal')
-    parser.add_argument('-data_file_2', default='final_data_confounded_1_confounded')
-    parser.add_argument('-save_model_name', default='experiment_1_model')
-    parser.add_argument('-epochs', default=3, type=int)
+    # parser.add_argument('-data_file_1', default='final_data_causal_1_causal')
+    # parser.add_argument('-data_file_2', default='final_data_confounded_1_confounded')
+    parser.add_argument('-data_file_1', default='small_causal_1_causal')
+    parser.add_argument('-data_file_2', default='small_confounded_1_confounded')
+    parser.add_argument('-save_model_name', default='small_experiment_1_model')
+    parser.add_argument('-epochs', default=20, type=int)
     parser.add_argument('-loaded_model_name', default='')
     parser.add_argument('-freeze_encoder', default=0, choices={0, 1})
 
@@ -136,16 +140,26 @@ if __name__ == '__main__':
     parser.add_argument('-additional_num_hidden_layers', default=0, choices={0, 1})
 
     arguments = parser.parse_args()
+    run_grid = False
     save_model_name = arguments.save_model_name
-    learning_rates = [1e-4, 1e-3, 1e-2, 1e-1]
-    optimizers = ['rms', 'adam']
-    additional_num_hidden_layers = [0, 1]
-    dropout_rates = [0., 0.1, 0.25, 0.3]
-    grid = product(learning_rates, optimizers, additional_num_hidden_layers, dropout_rates)
-    for lr, opt, add_layers, p in grid:
+    if run_grid:
+        learning_rates = [1e-4, 1e-3, 1e-2, 1e-1]
+        optimizers = ['rms', 'adam']
+        additional_num_hidden_layers = [0, 1]
+        dropout_rates = [0., 0.1, 0.25, 0.3]
+        num_hiddens = [50, 100, 500]
+    else:
+        learning_rates = [1e-4]
+        optimizers = ['rms']
+        additional_num_hidden_layers = [0]
+        dropout_rates = [0.3]
+        num_hiddens = [100]
+    grid = product(learning_rates, optimizers, additional_num_hidden_layers, dropout_rates, num_hiddens)
+    for lr, opt, add_layers, p, n_hidd in grid:
         arguments.learning_rate = lr
         arguments.optimizer = opt
         arguments.additional_num_hidden_layers = add_layers
         arguments.dropout_rate = p
+        arguments.n_hiddens = n_hidd
         arguments.save_model_name = save_model_name + datetime.now().strftime('_%y%m%d_%H%M%S')
         run_model(arguments)

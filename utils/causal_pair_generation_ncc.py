@@ -145,7 +145,7 @@ def save_confounded(ce_pairs, folder_path, file_name, **kwargs):
     np.savez_compressed(os.path.join(folder_path, file_name + '_causal_z_x'), data=data_causal_z_x)
     np.savez_compressed(os.path.join(folder_path, file_name + '_causal_z_y'), data=data_causal_z_y)
 
-    if kwargs.get('plt_joint_dist', True):
+    if kwargs.get('plt_joint_dist', False):
         aggregated_cause_z = np.hstack(cause_z)
         aggregated_effect_x = np.hstack(effect_x)
         aggregated_effect_y = np.hstack(effect_y)
@@ -182,12 +182,12 @@ def create_pairwise_dataset(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-size', default=10000)
-    parser.add_argument('-num_effects', default=2)
+    parser.add_argument('-size', default=100)
+    parser.add_argument('-num_effects', default=1)
     parser.add_argument('-save', default=True)
-    parser.add_argument('-file_name', default='final_data_confounded_1')
-    parser.add_argument('-m_i_min', default=300)
-    parser.add_argument('-m_i_max', default=1500)
+    parser.add_argument('-file_name', default='small_causal_1')
+    parser.add_argument('-m_i_min', default=100)
+    parser.add_argument('-m_i_max', default=500)
     arguments = parser.parse_args()
     create_pairwise_dataset(arguments)
     # data, labels = load_dataset('tuebingen')
