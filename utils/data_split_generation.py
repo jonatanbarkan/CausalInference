@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from utils.causal_pair_generation_ncc import plot_joint_distribution
-from utils.data_loader import load_data, create_labels
+from utils.data_loader import load_data, create_labels, load_cdt_dataset
 
 
 def create_data(folder_path, file_name, label_val, **kwargs):
@@ -25,6 +25,14 @@ def create_df(pair_1, pair_2, labels=()):
     df = pd.DataFrame(aggregated, columns=['x', 'y'])
     df['kind'] = [labels[0]] * aggregated_pair_1.shape[0] + [labels[1]] * aggregated_pair_2.shape[0]
     return df
+
+
+def save_sub_dataset(X, y, folder_path, file_path):
+    full_path = os.path.join(folder_path, file_path)
+    vec_unstack_idxes = np.cumsum(np.array([0] + [x.shape[1] for x in X]))
+    vec_unstack_idxes[-1] += 1
+    X_stacked = np.hstack(X)
+    np.savez_compressed(full_path, data=X_stacked, labels=y, vec_unstack_idxes=vec_unstack_idxes)
 
 
 def split_data_to_disc(args, **kwargs):
@@ -48,16 +56,14 @@ def split_data_to_disc(args, **kwargs):
     X_tr, X_test, y_tr, y_test = train_test_split(data, labels, train_size=kwargs.get('train_size', 0.8))
     X_tr, X_val, y_tr, y_val = train_test_split(X_tr, y_tr, train_size=kwargs.get('train_size', 0.8))
 
-    np.savez_compressed(os.path.join(split_data_folder_path, name + '_val_data'), data=np.hstack(X_val[:6]))
-    np.savez_compressed(os.path.join(split_data_folder_path, name + '_train_data'), data=X_tr)
-    np.savez_compressed(os.path.join(split_data_folder_path, name + '_test_data'), data=X_test)
+    save_sub_dataset(X_tr, y_tr, split_data_folder_path, name + '_train')
+    save_sub_dataset(X_val, y_val, split_data_folder_path, name + '_val')
+    save_sub_dataset(X_test, y_test, split_data_folder_path, name + '_test')
 
-    np.savez_compressed(os.path.join(split_data_folder_path, name + '_train_labels'), labels=y_tr)
-    np.savez_compressed(os.path.join(split_data_folder_path, name + '_val_labels'), labels=y_val)
-    np.savez_compressed(os.path.join(split_data_folder_path, name + '_test_labels'), labels=y_test)
-
+    # X_tr2, y_tr2 = load_splitted_data(split_data_folder_path, name + '_train_data')
 
 if __name__ == '__main__':
+    # data, labels = load_cdt_dataset()
     parser = argparse.ArgumentParser()
     parser.add_argument('-data_file_1', default='small_causal_1_causal')
     parser.add_argument('-data_file_2', default='small_confounded_1_confounded')

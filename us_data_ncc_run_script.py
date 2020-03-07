@@ -11,6 +11,7 @@ from datetime import datetime
 from CausalDiscuveryToolboxClone.Models.NCC import NCC
 from utils.causal_pair_generation_ncc import plot_joint_distribution
 from utils.data_loader import load_data, create_labels  # load_correct,
+from utils.data_loader import load_splitted_data
 from utils.visualization import make_plots, make_separate_plots
 from itertools import product
 
@@ -23,11 +24,11 @@ def save_json(output_path, model_name, **kwargs):
         f.write(jsbeautifier.beautify(json.dumps(kwargs), opts))
 
 
-def create_data(folder_path, file_name, label_val, **kwargs):
-    # data = load_data(path.join(getcwd(), 'Data'), 'temp_causal')[0]
-    data = load_data(folder_path, file_name)[0]
-    labels = create_labels(len(data), label_val)
-    return data, labels
+# def create_data(folder_path, file_name, label_val, **kwargs):
+#     # data = load_data(path.join(getcwd(), 'Data'), 'temp_causal')[0]
+#     data = load_data(folder_path, file_name)[0]
+#     labels = create_labels(len(data), label_val)
+#     return data, labels
 
 
 def get_network(filename='', freeze_encoder=False, num_effect=1, **kwargs):
@@ -77,30 +78,37 @@ def run_model(FLAGS, **kwargs):
     plots_path = os.path.join(os.getcwd(), "Results", FLAGS.save_model_name)
     model_path = os.path.join(os.getcwd(), "Models")
     jsons_path = os.path.join(os.getcwd(), "Jsons")
+    splitted_data_path = os.path.join(os.getcwd(), "SplitData")
     os.makedirs(plots_path, exist_ok=True)
     os.makedirs(model_path, exist_ok=True)
     os.makedirs(jsons_path, exist_ok=True)
+    os.makedirs(splitted_data_path, exist_ok=True)
+
+    name = '_'.join([FLAGS.data_file_1, FLAGS.data_file_2])
+    X_tr, y_tr = load_splitted_data(splitted_data_path, name + '_train')
+    X_val, y_val = load_splitted_data(splitted_data_path, name + '_val')
 
     # TODO: moved to split script - replace with load of train and validation sets
     # load data
-    data_folder_path = os.path.join(os.getcwd(), 'Data')
-    data, labels = create_data(data_folder_path, FLAGS.data_file_1, 0)
-    if FLAGS.num_effects == 2:
-        if not FLAGS.data_file_2:
-            raise ValueError('no second file inserted')
-        data2, labels2 = create_data(data_folder_path, FLAGS.data_file_2, 1)
 
-        # plot distributions
-        if kwargs.get('plot_distributions', False):
-            df = create_df(data, data2, (FLAGS.data_file_1, FLAGS.data_file_2))
-            plot_joint_distribution(df=df, folder_path=plots_path, name=FLAGS.save_model_name)
-
-        data = data + data2
-        labels = np.hstack((labels, labels2))
-
-    # split data
-    X_tr, X_test, y_tr, y_test = split_data(data, labels)
-    X_tr, X_val, y_tr, y_val = split_data(X_tr, y_tr)
+    # data_folder_path = os.path.join(os.getcwd(), 'Data')
+    # data, labels = create_data(data_folder_path, FLAGS.data_file_1, 0)
+    # if FLAGS.num_effects == 2:
+    #     if not FLAGS.data_file_2:
+    #         raise ValueError('no second file inserted')
+    #     data2, labels2 = create_data(data_folder_path, FLAGS.data_file_2, 1)
+    #
+    #     # plot distributions
+    #     if kwargs.get('plot_distributions', False):
+    #         df = create_df(data, data2, (FLAGS.data_file_1, FLAGS.data_file_2))
+    #         plot_joint_distribution(df=df, folder_path=plots_path, name=FLAGS.save_model_name)
+    #
+    #     data = data + data2
+    #     labels = np.hstack((labels, labels2))
+    #
+    # # split data
+    # X_tr, X_test, y_tr, y_test = split_data(data, labels)
+    # X_tr, X_val, y_tr, y_val = split_data(X_tr, y_tr)
 
     # load/initialize network
     network = get_network(FLAGS.loaded_model_name, FLAGS.freeze_encoder, FLAGS.num_effects,
@@ -140,7 +148,7 @@ if __name__ == '__main__':
     parser.add_argument('-additional_num_hidden_layers', default=0, choices={0, 1})
 
     arguments = parser.parse_args()
-    run_grid = False
+    run_grid = True
     save_model_name = arguments.save_model_name
     if run_grid:
         learning_rates = [1e-4, 1e-3, 1e-2, 1e-1]
