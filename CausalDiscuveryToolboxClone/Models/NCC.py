@@ -453,7 +453,7 @@ class NCC(PairwiseModel):
         err_total = err_total_vec.mean()
         out_reg = output[:len(y)]
         out_sym = output[len(y):]
-        symmetry_check = 0.5 * (1 - out_reg + out_sym).mean() if self.anti else (1 - np.abs(out_sym - out_reg)).mean()
+        symmetry_check = (0.5 * (1 - out_reg + out_sym)).mean() if self.anti else (1 - np.abs(out_sym - out_reg)).mean()
         return err_total, err_causal, err_non_causal, symmetry_check
 
     def log_values(self, err_total, err_causal, err_anti, symmetry_check, dataset_type):

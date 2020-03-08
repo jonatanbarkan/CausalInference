@@ -62,11 +62,12 @@ def split_data_to_disc(args, **kwargs):
 
     # X_tr2, y_tr2 = load_splitted_data(split_data_folder_path, name + '_train_data')
 
+
 if __name__ == '__main__':
     # data, labels = load_cdt_dataset()
     parser = argparse.ArgumentParser()
-    parser.add_argument('-data_file_1', default='small_causal_1_causal')
-    parser.add_argument('-data_file_2', default='small_confounded_1_confounded')
-    # parser.add_argument('-data_file_2', default='')
+    parser.add_argument('-data_file_1', default='medium_1_causal')
+    # parser.add_argument('-data_file_2', default='small_1_confounded')
+    parser.add_argument('-data_file_2', default='')
     arguments = parser.parse_args()
     split_data_to_disc(arguments)

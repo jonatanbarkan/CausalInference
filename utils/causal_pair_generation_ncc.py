@@ -182,10 +182,10 @@ def create_pairwise_dataset(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-size', default=100)
+    parser.add_argument('-size', default=10000)
     parser.add_argument('-num_effects', default=1)
     parser.add_argument('-save', default=True)
-    parser.add_argument('-file_name', default='small_causal_1')
+    parser.add_argument('-file_name', default='medium_1')
     parser.add_argument('-m_i_min', default=100)
     parser.add_argument('-m_i_max', default=500)
     arguments = parser.parse_args()
