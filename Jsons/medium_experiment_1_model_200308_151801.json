@@ -1,0 +1,15 @@
+{
+    "num_effects": 1,
+    "data_file_1": "medium_1_causal",
+    "data_file_2": "",
+    "save_model_name": "medium_experiment_1_model_200308_151801",
+    "epochs": 20,
+    "loaded_model_name": "",
+    "freeze_encoder": 0,
+    "learning_rate": 0.01,
+    "optimizer": "adam",
+    "batch_size": 16,
+    "n_hiddens": 50,
+    "dropout_rate": 0.1,
+    "additional_num_hidden_layers": 0
+}
