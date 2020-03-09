@@ -7,67 +7,82 @@ import json
 
 
 class TableResults:
-    def __init__(self, model_name):
-        models = dict()
-        with open('data.txt') as json_file:
-            json_models = json.load(json_file)
-            for json
-            model_name =
+    def __init__(self, file_name, folder_split_data='SplitData', folder_figs_for_projects='figs_for_projects',
+                 folder_data='Data'):
+        self.file_name = file_name
+        with open(f'{file_name}.json') as lst_file_json:
+            json_models = json.load(lst_file_json)
+            self.json_models = json_models
+        self.table = []
+        self.header = ['kind', 'test', 'model', ' accuracy', 'symmetry']
+        self.split_data_path = self.get_path_file(folder_split_data)
+        self.figs_for_projects_path = self.get_path_file(folder_figs_for_projects)
+        self.data_path = self.get_path_file(folder_data)
+        self.dict_models = self.create_model_dict()
 
-        self.models = models
-        self.table = [['kind', 'test', 'model',' accuracy', 'symmetry']]
 
+    def create_model_dict(self):
+        dict_models = dict()
+        for json_model in self.json_models:
+            model_name = json_model
+            model_params = json.load(f'{json_model}.json')
+            kind = self.create_model_kind(model_params)
+            model_lst_vals = self.create_model_lst_vals(model_params, kind)
+            dict_models[model_name] = model_lst_vals
+        return dict_models
 
-def create_results(dict_model_names, device='cpu'):
-    # test : ['tubingen', 'synthesis']
-    # kind : ['causal', 'confounded']
-    d = {'model_name': [('test', 'kind')]}
-    results = {
-        'kind': ['causal', 'confounded', '...'],
-        'test': ['data'],
-        'model name': [],
-        'accuracy': [],
-        'symmetry': []
-    }
-    split_data_path = os.path.join(os.getcwd(), "SplitData")
-    os.makedirs(split_data_path, exist_ok=True)
-    figs_for_projects_path = os.path.join(os.getcwd(), "figs_for_projects")
-    os.makedirs(figs_for_projects_path, exist_ok=True)
+    @staticmethod
+    def get_path_file(folder_name):
+        folder_path = os.path.join(os.getcwd(), folder_name)
+        os.makedirs(folder_path, exist_ok=True)
+        return folder_path
 
-    test_set_funcs = {'tubingen': load_cdt_dataset, 'causal': load_split_data,
-                      'confounded new': load_split_data, 'confounded load': load_split_data,
-                      'confounde freeze': load_split_data}
+    @staticmethod
+    def create_model_kind(m_params):
+        nun_effects = m_params["nun_effects"]
+        loaded_model_name = m_params["loaded_model_name"]
+        freeze_encoder = m_params["freeze_encoder"]
+        if nun_effects == 1:
+            return 'causal'
+        elif nun_effects == 2 and loaded_model_name:
+            return 'confounded (load)'
+        elif nun_effects == 2 and freeze_encoder:
+            return 'confounded (freeze)'
+        else:
+            return 'confounded (new)'
 
-    for model_name in dict_model_names.keys():
-        network = get_network(model_name, freeze_encoder='to complete', num_effect='to complete')
-        for test, kind in dict_model_names[model_name]:
-            load_test_set = test_set_funcs[test]
-            X_test, labels_test = load_test_set(folder_path=split_data_path, file_name=model_name + '_test')
-            err_total, _, _, symmetry_check = network.compute_values(X_test, labels_test, device=device)
-            results['model name'] = model_name
-            results['accuracy'].append(1 - err_total)
-            results['symmetry'].append(symmetry_check)
-            results['kind'].append(kind)
-            results['test'] = test
+    def create_model_lst_vals(self, m_params, kind):
+        nun_effects = m_params["nun_effects"]
+        data_file_1 = m_params["data_file_1"]
+        data_file_2 = m_params["data_file_2"]
+        test_name = '_'.join([data_file_1, data_file_2])
+        if nun_effects == 1:
+            return [[nun_effects, kind, 'Tubingen', self.data_path, 'Tubingen'],
+                    [nun_effects, kind, test_name.strip('_'), self.split_data_path, '_'.join([test_name, 'test'])]]
+        else:
+            return [[nun_effects, kind, test_name.strip('_'), self.split_data_path, '_'.join([test_name, 'test'])],
+                    [nun_effects, kind, 'Z -> X', self.data_path, '_'.join([data_file_2, 'causal_z_x'])],
+                    [nun_effects, kind, 'Z -> Y', self.data_path, '_'.join([data_file_2, 'causal_z_y'])]]
 
-    df_results = pd.DataFrame(results)
-    full_path = os.path.join(figs_for_projects_path, 'table_results.csv')
-    df_results.to_csv(full_path, index=False)
-    return results
+    def create_results(self, device='cpu'):
+        dict_models = self.dict_models
+        for model_full_name in dict_models.keys():
+            model_name = model_full_name.split('model')[0].strip('_')
+            for (nun_effects, kind, test_name, folder_path, file_name) in dict_models[model_full_name]:
+                network = get_network(model_full_name, num_effect=nun_effects)
+                X_test, labels_test = load_split_data(folder_path, file_name)
+                err_total, _, _, symmetry_check = network.compute_values(X_test, labels_test, device=device)
+                self.table.append([kind, test_name, model_name, 1 - err_total, symmetry_check])
+
+    def save_table(self):
+        df = pd.DataFrame(self.table, columns=self.header)
+        file_name = os.path.join(self.figs_for_projects_path, f'{self.file_name}.csv')
+        df.to_csv(file_name)
 
 
 if __name__ == '__main__':
-    split_data_name = 'medium_1_causal__test'
-    model_name = 'medium_experiment_1_model_200308_145006'
-    dict_model_names = {'medium_experiment_1_model_200308_145006': [('medium_1_causal__test', 'causal'),
-                                                                    ('medium_1_causal__test', 'tubingen')]}
-
-# loaded_model_name = 'small_experiment_4_model_200308_115124'
-# X_test, labels_test = load_cdt_dataset()
-# a = 0
-#
-# network = get_network(loaded_model_name, )
-#
-# # train network
-# # make_plots(logged_values, plot_path=plots_path, model_name=FLAGS.save_model_name)
-# make_separate_plots(logged_values, plot_path=plots_path, model_name=FLAGS.save_model_name)
+    best_files = ['best_average_accuracy', 'best_symmetry', 'best_validation_accuracy']
+    for best_file in best_files:
+        table_result = TableResults(best_files)
+        table_result.create_results(device='cpu')
+        table_result.save_table()
