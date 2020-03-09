@@ -182,12 +182,12 @@ def create_pairwise_dataset(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-size', default=10000)
-    parser.add_argument('-num_effects', default=1)
+    parser.add_argument('-size', default=15000)
+    parser.add_argument('-num_effects', default=2)
     parser.add_argument('-save', default=True)
-    parser.add_argument('-file_name', default='medium_1')
+    parser.add_argument('-file_name', default='large_4')
     parser.add_argument('-m_i_min', default=100)
-    parser.add_argument('-m_i_max', default=500)
+    parser.add_argument('-m_i_max', default=300)
     arguments = parser.parse_args()
     create_pairwise_dataset(arguments)
     # data, labels = load_dataset('tuebingen')

@@ -53,8 +53,9 @@ def split_data_to_disc(args, **kwargs):
         labels = np.hstack((labels, labels2))
 
     # split data
-    X_tr, X_test, y_tr, y_test = train_test_split(data, labels, train_size=kwargs.get('train_size', 0.8))
-    X_tr, X_val, y_tr, y_val = train_test_split(X_tr, y_tr, train_size=kwargs.get('train_size', 0.8))
+    X_tr, X_test, y_tr, y_test = train_test_split(data, labels, train_size=kwargs.get('train_size', 5 / 6))
+    X_tr, X_val, y_tr, y_val = train_test_split(X_tr, y_tr, train_size=kwargs.get('train_size', 4 / 5))
+    print(len(y_tr), len(y_val))
 
     save_sub_dataset(X_tr, y_tr, split_data_folder_path, name + '_train')
     save_sub_dataset(X_val, y_val, split_data_folder_path, name + '_val')
@@ -66,8 +67,8 @@ def split_data_to_disc(args, **kwargs):
 if __name__ == '__main__':
     # data, labels = load_cdt_dataset()
     parser = argparse.ArgumentParser()
-    parser.add_argument('-data_file_1', default='medium_1_causal')
-    # parser.add_argument('-data_file_2', default='small_1_confounded')
-    parser.add_argument('-data_file_2', default='')
+    parser.add_argument('-data_file_1', default='large_4_causal')
+    # parser.add_argument('-data_file_2', default='')
+    parser.add_argument('-data_file_2', default='large_4_confounded')
     arguments = parser.parse_args()
     split_data_to_disc(arguments)

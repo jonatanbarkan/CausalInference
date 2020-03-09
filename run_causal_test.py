@@ -3,6 +3,19 @@ import pandas as pd
 from utils.data_loader import load_cdt_dataset, load_split_data
 from us_data_ncc_run_script import get_network, make_separate_plots
 import os
+import json
+
+
+class TableResults:
+    def __init__(self, model_name):
+        models = dict()
+        with open('data.txt') as json_file:
+            json_models = json.load(json_file)
+            for json
+            model_name =
+
+        self.models = models
+        self.table = [['kind', 'test', 'model',' accuracy', 'symmetry']]
 
 
 def create_results(dict_model_names, device='cpu'):
@@ -26,7 +39,7 @@ def create_results(dict_model_names, device='cpu'):
                       'confounde freeze': load_split_data}
 
     for model_name in dict_model_names.keys():
-        network = get_network(model_name)
+        network = get_network(model_name, freeze_encoder='to complete', num_effect='to complete')
         for test, kind in dict_model_names[model_name]:
             load_test_set = test_set_funcs[test]
             X_test, labels_test = load_test_set(folder_path=split_data_path, file_name=model_name + '_test')

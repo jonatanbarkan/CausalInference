@@ -86,9 +86,13 @@ def run_model(FLAGS, **kwargs):
 
     # train network
     network.create_loss(learning_rate=FLAGS.learning_rate, optimizer=FLAGS.optimizer)
-    logged_values = network.train(X_tr, y_tr, X_val, y_val, epochs=FLAGS.epochs, batch_size=FLAGS.batch_size, )
+    try:
+        network.train(X_tr, y_tr, X_val, y_val, epochs=FLAGS.epochs, batch_size=FLAGS.batch_size, )
+    except KeyboardInterrupt:
+        pass
 
-    # make_plots(logged_values, plot_path=plots_path, model_name=FLAGS.save_model_name)
+    logged_values = network.get_log_dict()
+
     make_separate_plots(logged_values, plot_path=plots_path, model_name=FLAGS.save_model_name)
     save_model(network, folder_path=model_path, name=FLAGS.save_model_name)
     save_json(jsons_path, FLAGS.save_model_name, **vars(FLAGS))
@@ -97,16 +101,17 @@ def run_model(FLAGS, **kwargs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-num_effects', default=1, choices={1, 2})
-    parser.add_argument('-data_file_1', default='medium_1_causal')
-    # parser.add_argument('-data_file_2', default='small_1_confounded')
+    parser.add_argument('-data_file_1', default='medium_2_causal')
     parser.add_argument('-data_file_2', default='')
-    parser.add_argument('-save_model_name', default='medium_experiment_1_model')
-    parser.add_argument('-epochs', default=20, type=int)
+    # parser.add_argument('-data_file_1', default='medium_3_causal')
+    # parser.add_argument('-data_file_2', default='medium_3_confounded')
+    parser.add_argument('-save_model_name', default='large_experiment_1_model')
+    parser.add_argument('-epochs', default=3, type=int)
     parser.add_argument('-loaded_model_name', default='')
     parser.add_argument('-freeze_encoder', default=0, choices={0, 1})
 
     parser.add_argument('-learning_rate', default=1e-4)
-    parser.add_argument('-optimizer', default='rms', choices={'rms', 'adam'})
+    parser.add_argument('-optimizer', default='rms', choices={'rms', 'adam', 'momentum'})
     parser.add_argument('-batch_size', default=16, choices={8, 16, 32, 64})
 
     parser.add_argument('-n_hiddens', default=100, choices={50, 100, 500})
@@ -114,20 +119,28 @@ if __name__ == '__main__':
     parser.add_argument('-additional_num_hidden_layers', default=0, choices={0, 1})
 
     arguments = parser.parse_args()
-    run_grid = True
+
+    if arguments.num_effects == 1:
+        arguments.data_file_1 = 'large_3_causal'
+        arguments.data_file_2 = ''
+    elif arguments.num_effects == 2:
+        arguments.data_file_1 = 'large_4_causal'
+        arguments.data_file_2 = 'large_4_confounded'
+
+    run_grid = False
     save_model_name = arguments.save_model_name
     if run_grid:
         learning_rates = [0.01]
-        optimizers = ['adam']
-        additional_num_hidden_layers = [0]
-        dropout_rates = [0., 0.1, 0.25]
-        num_hiddens = [50, 100]
+        optimizers = ['rms', 'momentum']
+        additional_num_hidden_layers = [0, 1]
+        dropout_rates = [0.0, 0.1, 0.25, 0.3]
+        num_hiddens = [50, 100, 500]
     else:
-        learning_rates = [1e-3]
-        optimizers = ['adam']
+        learning_rates = [1e-2]
+        optimizers = ['rms', 'momentum']
         additional_num_hidden_layers = [0]
         dropout_rates = [0.0]
-        num_hiddens = [100]
+        num_hiddens = [50, 100, 500]
     grid = product(num_hiddens, learning_rates, optimizers, additional_num_hidden_layers, dropout_rates)
     print('lr, opt, add_layers, p, n_hidd:')
     for n_hidd, lr, opt, add_layers, p in grid:

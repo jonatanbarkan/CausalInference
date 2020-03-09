@@ -155,15 +155,16 @@ class NCC_model(nn.Module):
         self.dense.apply(self.init_weights)
 
     @staticmethod
-    def init_weights(m):
-        if isinstance(m, nn.Linear):
-            nn.init.kaiming_normal_(m.weight)
-            nn.init.normal_(m.bias, 0, 0.0001)
-            # m.bias.data.fill_(0.0001)
-        elif isinstance(m, nn.Conv1d):
-            nn.init.kaiming_normal_(m.weight)
-            nn.init.normal_(m.bias, 0, 0.0001)
-            # m.bias.data.fill_(0.0001)
+    def init_weights(m, method='normal'):
+        if isinstance(m, th.nn.Linear) or isinstance(m, th.nn.Conv1d):
+            if method == 'uniform':
+                nn.init.kaiming_uniform_(m.weight)
+            elif method == 'normal':
+                nn.init.kaiming_normal_(m.weight)
+            else:
+                raise NotImplemented
+            nn.init.normal_(m.bias, 0, 0.001)
+        # m.bias.data.fill_(0.01)
 
     def get_architecture_dict(self):
         architecture_dict = {'encoder': self.conv, 'classifier': self.dense}
@@ -273,6 +274,8 @@ class NCC(PairwiseModel):
             self.opt = th.optim.RMSprop(self.model.parameters(), lr=learning_rate)
         elif optimizer.lower() == 'adam':
             self.opt = th.optim.Adam(self.model.parameters(), lr=learning_rate)
+        elif optimizer.lower() == 'momentum':
+            self.opt = th.optim.SGD(self.model.parameters(), lr=learning_rate, momentum=0.9, nesterov=True)
         else:
             raise NotImplemented
         self.criterion = nn.BCEWithLogitsLoss()
@@ -529,6 +532,9 @@ class NCC(PairwiseModel):
                 self.model.eval()
                 self.log_values(*self.compute_values(X_tr, y_tr, device), 'train')
                 self.log_values(*self.compute_values(X_val, y_val, device), 'validation')
+        return self.log_dict
+
+    def get_log_dict(self):
         return self.log_dict
 
     def _predict_proba(self, X):
