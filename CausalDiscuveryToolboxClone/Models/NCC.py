@@ -261,10 +261,11 @@ class NCC(PairwiseModel):
         else:
             print('cannot save (no model)')
 
-    def load_model(self, folder_path, file_path):
+    def load_model(self, folder_path, file_path, n_hiddens, p, additional_num_hidden_layers, kernel_size=3):
         full_path = os.path.join(folder_path, file_path)
         if os.path.exists(full_path):
-            self.model = NCC_model()
+            self.model = NCC_model(n_hiddens=n_hiddens, p=p, kernel_size=kernel_size,
+                                   additional_num_hidden_layers=additional_num_hidden_layers)
             self.model.load_state_dict(th.load(full_path))
         else:
             print(f"path {full_path} doesn't exist")

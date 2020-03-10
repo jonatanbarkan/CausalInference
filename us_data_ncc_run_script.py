@@ -26,7 +26,7 @@ def get_network(filename='', freeze_encoder=False, num_effect=1, **kwargs):
     assert num_effect in [1, 2]
     obj = NCC()
     if filename:  # transfer learning
-        obj.load_model(os.path.join(os.getcwd(), 'Models'), file_path=filename + '.pth')
+        obj.load_model(os.path.join(os.getcwd(), 'Models'), file_path=filename + '.pth', **kwargs)
     else:
         obj.get_model(**kwargs)
     if freeze_encoder:
