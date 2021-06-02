@@ -42,7 +42,7 @@ torch==1.4.0
 torchvision==0.5.0
 tornado==6.0.3
 tqdm==4.41.1
-urllib3==1.25.7
+urllib3==1.26.5
 wcwidth==0.1.7
 wincertstore==0.2
 yellowbrick==1.0.1
